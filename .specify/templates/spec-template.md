@@ -95,6 +95,20 @@
 - **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
 - **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
 
+### Implementation Constraints *(mandatory for this project)*
+
+- **IC-001**: The feature MUST be implemented in Rust and remain compatible with the
+  project's `no_std` runtime assumptions unless explicitly approved otherwise.
+- **IC-002**: The feature MUST NOT introduce third-party dependencies; if external
+  code seems necessary, the spec MUST treat that as blocked pending a constitution
+  amendment.
+- **IC-003**: Any required assembly MUST be identified explicitly, with a reason
+  that explains why Rust alone is insufficient.
+- **IC-004**: Any new or expanded `unsafe` boundary MUST identify the invariant it
+  relies on and the module that will contain it.
+- **IC-005**: The spec MUST define how the feature will be validated, including
+  automated checks where practical and manual boot or emulator checks where needed.
+
 ### Key Entities *(include if feature involves data)*
 
 - **[Entity 1]**: [What it represents, key attributes without implementation]
@@ -126,3 +140,13 @@
 - [Assumption about scope boundaries, e.g., "Mobile support is out of scope for v1"]
 - [Assumption about data/environment, e.g., "Existing authentication system will be reused"]
 - [Dependency on existing system/service, e.g., "Requires access to the existing user profile API"]
+
+## Low-Level Impact *(mandatory)*
+
+- **Architecture Impact**: [State whether the change affects architecture-specific code, boot
+  flow, interrupts, memory layout, or "None"]
+- **Dependency Impact**: [Confirm "No new dependencies" or explain blocked exception]
+- **Assembly Impact**: [List required assembly touchpoints or "None"]
+- **Unsafe Impact**: [List required unsafe touchpoints or "None"]
+- **Validation Plan**: [List the commands, emulator flow, and/or manual checks that will prove
+  the feature works]

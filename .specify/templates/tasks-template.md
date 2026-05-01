@@ -8,7 +8,8 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Tests**: Include validation tasks for every feature. Automated Rust tests are strongly preferred
+when practical, and boot or emulator validation tasks are mandatory for kernel-critical changes.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -49,8 +50,8 @@ description: "Task list template for feature implementation"
 **Purpose**: Project initialization and basic structure
 
 - [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T002 Initialize Rust project scaffolding without third-party dependencies
+- [ ] T003 [P] Configure formatting, linting, and validation commands
 
 ---
 
@@ -62,12 +63,12 @@ description: "Task list template for feature implementation"
 
 Examples of foundational tasks (adjust based on your project):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T004 Establish target, linker, and boot configuration
+- [ ] T005 [P] Create core architecture abstractions and module boundaries
+- [ ] T006 [P] Define memory layout and shared low-level types
+- [ ] T007 Isolate required unsafe primitives behind reviewed interfaces
+- [ ] T008 Document existing assembly boundaries and required touchpoints
+- [ ] T009 Setup emulator or boot validation workflow
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -79,21 +80,21 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+### Validation for User Story 1 ⚠️
 
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+> **NOTE: Add automated tests first when practical, then define the boot or emulator check**
 
-- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T010 [P] [US1] Add or update Rust test coverage for [behavior] in [exact file path]
+- [ ] T011 [US1] Define reproducible boot or emulator validation for [behavior] in [exact file path or doc]
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
-- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T016 [US1] Add validation and error handling
-- [ ] T017 [US1] Add logging for user story 1 operations
+- [ ] T012 [P] [US1] Implement Rust module changes in [exact file path]
+- [ ] T013 [P] [US1] Implement supporting low-level types or interfaces in [exact file path]
+- [ ] T014 [US1] Add or revise assembly only if required in [exact file path]
+- [ ] T015 [US1] Contain unsafe boundary changes and document invariants in [exact file path]
+- [ ] T016 [US1] Integrate feature behavior in [exact file path]
+- [ ] T017 [US1] Record validation notes or command updates in [exact file path]
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -105,16 +106,16 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
+### Validation for User Story 2 ⚠️
 
-- [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T018 [P] [US2] Add or update Rust test coverage for [behavior] in [exact file path]
+- [ ] T019 [US2] Define reproducible boot or emulator validation for [behavior] in [exact file path or doc]
 
 ### Implementation for User Story 2
 
-- [ ] T020 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T021 [US2] Implement [Service] in src/services/[service].py
-- [ ] T022 [US2] Implement [endpoint/feature] in src/[location]/[file].py
+- [ ] T020 [P] [US2] Implement Rust module changes in [exact file path]
+- [ ] T021 [US2] Revise assembly or linker behavior only if required in [exact file path]
+- [ ] T022 [US2] Contain unsafe boundary changes and document invariants in [exact file path]
 - [ ] T023 [US2] Integrate with User Story 1 components (if needed)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
@@ -127,16 +128,16 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
+### Validation for User Story 3 ⚠️
 
-- [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T024 [P] [US3] Add or update Rust test coverage for [behavior] in [exact file path]
+- [ ] T025 [US3] Define reproducible boot or emulator validation for [behavior] in [exact file path or doc]
 
 ### Implementation for User Story 3
 
-- [ ] T026 [P] [US3] Create [Entity] model in src/models/[entity].py
-- [ ] T027 [US3] Implement [Service] in src/services/[service].py
-- [ ] T028 [US3] Implement [endpoint/feature] in src/[location]/[file].py
+- [ ] T026 [P] [US3] Implement Rust module changes in [exact file path]
+- [ ] T027 [US3] Contain unsafe boundary changes and document invariants in [exact file path]
+- [ ] T028 [US3] Implement feature integration in [exact file path]
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -153,8 +154,8 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX [P] Documentation updates in docs/
 - [ ] TXXX Code cleanup and refactoring
 - [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
-- [ ] TXXX Security hardening
+- [ ] TXXX [P] Additional Rust tests in tests/unit/ or tests/integration/
+- [ ] TXXX Remove unnecessary assembly or reduce unsafe surface if implementation permits
 - [ ] TXXX Run quickstart.md validation
 
 ---
@@ -178,9 +179,9 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Within Each User Story
 
-- Tests (if included) MUST be written and FAIL before implementation
-- Models before services
-- Services before endpoints
+- Automated tests SHOULD be written before implementation whenever practical
+- Rust modules before higher-level integration
+- Assembly and unsafe changes must stay isolated and justified
 - Core implementation before integration
 - Story complete before moving to next priority
 
@@ -198,13 +199,13 @@ Examples of foundational tasks (adjust based on your project):
 ## Parallel Example: User Story 1
 
 ```bash
-# Launch all tests for User Story 1 together (if tests requested):
-Task: "Contract test for [endpoint] in tests/contract/test_[name].py"
-Task: "Integration test for [user journey] in tests/integration/test_[name].py"
+# Launch all validation for User Story 1 together:
+Task: "Add or update Rust test coverage for [behavior] in [exact file path]"
+Task: "Define reproducible boot or emulator validation for [behavior] in [exact file path or doc]"
 
-# Launch all models for User Story 1 together:
-Task: "Create [Entity1] model in src/models/[entity1].py"
-Task: "Create [Entity2] model in src/models/[entity2].py"
+# Launch parallel implementation work for User Story 1:
+Task: "Implement Rust module changes in [exact file path]"
+Task: "Implement supporting low-level types or interfaces in [exact file path]"
 ```
 
 ---
@@ -245,7 +246,7 @@ With multiple developers:
 - [P] tasks = different files, no dependencies
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
-- Verify tests fail before implementing
+- Include dependency, assembly, unsafe, and validation tasks whenever they are affected
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence

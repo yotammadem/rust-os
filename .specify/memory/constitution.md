@@ -1,50 +1,105 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+Version change: template -> 1.0.0
+Modified principles:
+- Principle 1 -> I. Rust-First Kernel
+- Principle 2 -> II. Zero-Dependency Rule
+- Principle 3 -> III. Assembly as a Last Resort
+- Principle 4 -> IV. Unsafe Boundaries Must Be Contained
+- Principle 5 -> V. Reproducible Bring-Up Validation
+Added sections:
+- Technical Boundaries
+- Delivery Workflow
+Removed sections:
+- None
+Templates requiring updates:
+- ✅ updated .specify/templates/plan-template.md
+- ✅ updated .specify/templates/spec-template.md
+- ✅ updated .specify/templates/tasks-template.md
+- ⚠ pending .specify/templates/commands/*.md (directory not present in this repository)
+Follow-up TODOs:
+- None
+-->
+# rust-os Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Rust-First Kernel
+All production kernel and platform code MUST be written in Rust. The codebase MUST
+remain `no_std` unless a constitution amendment explicitly approves a different
+runtime model. Safe Rust is the default; when low-level work requires `unsafe`,
+the unsafe boundary MUST be kept as small as possible and wrapped in a safe,
+well-named interface. The rationale is straightforward: language-level guarantees
+are one of the main reasons to build this operating system in Rust at all.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Zero-Dependency Rule
+The project MUST not introduce third-party dependencies. GRUB is the only approved
+external bootloader component. Toolchain-provided crates that are part of the Rust
+distribution, such as `core` and `alloc`, are allowed; additional crates from
+`crates.io`, git sources, or vendored third-party code are prohibited unless this
+constitution is amended first. This keeps the trusted computing base small and
+forces the project to understand its own low-level behavior.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Assembly as a Last Resort
+Assembly MUST only be used where the target architecture, boot protocol, context
+switching, interrupt entry, or other hardware-defined interfaces make Rust
+insufficient on its own. Each assembly file or inline assembly block MUST document
+why Rust could not express the operation, what contract the assembly obeys, and
+which Rust module owns it. Assembly MUST be isolated behind the smallest stable
+surface practical so the rest of the kernel remains readable, portable, and
+reviewable.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Unsafe Boundaries Must Be Contained
+Unsafe code MUST be limited to hardware access, memory management primitives, boot
+handoff, synchronization internals, and other operations whose invariants cannot
+be expressed in safe Rust alone. Every unsafe block MUST be paired with a short
+explanation of the invariant it relies on and SHOULD be encapsulated so callers use
+a safe API whenever possible. This principle complements the assembly rule: if
+low-level escape hatches are unavoidable, they must still be narrow and auditable.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Reproducible Bring-Up Validation
+Changes that affect boot, memory layout, interrupts, scheduling, or other critical
+kernel paths MUST include a reproducible validation path before merge. Validation
+MUST name the commands or emulator flow used to verify the change, and regressions
+MUST be caught with automated Rust tests whenever host-side testing is practical.
+Where full automation is not possible, the pull request MUST describe the manual
+boot or hardware validation that was performed. Kernel work is only acceptable when
+others can re-run the same checks and reach the same result.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Technical Boundaries
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+- The default target is a Rust operating system kernel with a minimal boot chain
+  built around GRUB.
+- The repository MUST prefer Rust modules, linker configuration, and build scripts
+  over handwritten assembly whenever both can solve the same problem.
+- Feature designs MUST call out any new assembly, unsafe expansion, architecture-
+  specific code, linker changes, or boot protocol changes as explicit review items.
+- New abstractions MUST justify their existence in terms of correctness,
+  maintainability, or hardware requirements; speculative infrastructure is not
+  allowed.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Delivery Workflow
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- Every feature spec MUST list architecture assumptions, dependency impact,
+  assembly impact, unsafe impact, and a validation plan.
+- Every implementation plan MUST fail its Constitution Check if it introduces a new
+  external dependency, expands assembly without justification, or leaves validation
+  steps undefined.
+- Every task list MUST include work items for validation and for documenting any
+  assembly or unsafe boundary that changes.
+- Code review MUST treat constitution violations as blocking defects, not style
+  preferences.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution overrides conflicting local habits, feature plans, and task
+lists. Amendments require a documented rationale, an explicit description of the
+rules being changed, and updates to dependent templates before the amendment is
+considered complete. Versioning follows semantic versioning for governance:
+MAJOR for incompatible principle changes or removals, MINOR for new principles or
+materially expanded rules, and PATCH for clarifications that do not change
+behavioral expectations. Compliance review is mandatory for every plan and pull
+request; reviewers MUST verify dependency policy, assembly minimization, unsafe
+containment, and validation evidence against this document.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-05-01 | **Last Amended**: 2026-05-01

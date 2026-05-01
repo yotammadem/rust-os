@@ -17,12 +17,12 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
+**Language/Version**: [e.g., Rust nightly `no_std` or NEEDS CLARIFICATION]  
+**Primary Dependencies**: [e.g., none beyond Rust toolchain crates and GRUB, or NEEDS CLARIFICATION]  
 **Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
 **Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]  
+**Target Platform**: [e.g., x86_64 bare metal via GRUB, or NEEDS CLARIFICATION]
+**Project Type**: [e.g., operating system kernel, low-level runtime, architecture support module, or NEEDS CLARIFICATION]  
 **Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
 **Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
@@ -31,7 +31,11 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- [ ] No third-party dependencies are introduced; any non-toolchain dependency is rejected.
+- [ ] Any GRUB integration change is explicitly described and justified.
+- [ ] Any new assembly is the minimum required surface and includes a justification.
+- [ ] Any new or expanded `unsafe` boundary documents its invariants and safe wrapper plan.
+- [ ] Validation covers all affected boot or kernel-critical paths with reproducible commands.
 
 ## Project Structure
 
@@ -51,44 +55,26 @@ specs/[###-feature]/
 <!--
   ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
   for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
+  real paths. The delivered plan must not include Option labels.
 -->
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
+# Example kernel-oriented layout
 src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+├── arch/
+├── boot/
+├── memory/
+├── interrupts/
+└── lib.rs
 
 tests/
-├── contract/
+├── unit/
 ├── integration/
-└── unit/
+└── boot/
 
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+asm/
+linker/
+scripts/
 ```
 
 **Structure Decision**: [Document the selected structure and reference the real
@@ -100,5 +86,5 @@ directories captured above]
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+| [e.g., new assembly stub] | [hardware or ABI requirement] | [why Rust-only approach is not viable] |
+| [e.g., unsafe memory primitive] | [specific correctness constraint] | [why existing safe abstraction is insufficient] |
