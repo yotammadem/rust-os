@@ -27,6 +27,8 @@
   used before control returns to the caller.
 - A zero-page or oversized request returns failure without mutating allocator
   state.
+- The current implementation exposes this behavior through `BitmapAllocator`
+  methods in `src/memory/bitmap.rs`.
 
 ### Failure Conditions
 
@@ -39,7 +41,8 @@
 ### Required Behavior
 
 - The allocator exposes a free operation for a previously returned `PageSpan`.
-- Successful free marks the full span available again.
+- Successful free marks the full span available again and returns a released-span
+  result.
 - Invalid free requests return failure and leave allocator state unchanged.
 
 ### Failure Conditions

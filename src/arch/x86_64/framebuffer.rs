@@ -1,4 +1,4 @@
-use crate::boot::multiboot::{EfiStatus, SimpleTextOutputProtocol, SystemTable};
+use crate::boot::uefi::{EfiStatus, SimpleTextOutputProtocol, SystemTable};
 
 pub struct FramebufferConsole {
     con_out: *mut SimpleTextOutputProtocol,

@@ -20,6 +20,8 @@ Expected result:
 - Host-side tests cover memory-region normalization, bitmap bookkeeping,
   contiguous page search, invalid free handling, and free/reuse behavior
 - The kernel target still compiles in the freestanding UEFI configuration
+- Current verified result: `cargo test` passes with 18 host-side checks and
+  `cargo check --target x86_64-unknown-uefi` passes
 
 ## Boot Validation
 
@@ -34,6 +36,10 @@ Expected result:
 - QEMU still boots the image through UEFI and GRUB
 - Allocator initialization completes during boot without corrupting memory state
 - The existing visible boot outcome remains intact after integration
+- Current verified result: `make build` succeeds. A bounded `./run.sh` smoke run
+  reaches the GRUB handoff into the EFI payload; that automated capture does not
+  directly prove the on-screen UEFI text output because it is not emitted on the
+  serial console
 
 ## Clean Rebuild
 
@@ -52,3 +58,5 @@ make build
   failure and leaves bookkeeping unchanged
 - If a caller attempts an invalid free, the allocator reports failure and does
   not mutate tracked page ownership
+- If the temporary UEFI memory-map buffer or normalized-region buffer is too
+  small, allocator initialization aborts instead of publishing partial state

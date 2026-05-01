@@ -32,8 +32,6 @@ The goal was to create a GRUB-based x86_64 UEFI boot image that:
   [specs/001-hello-boot/quickstart.md](/Users/yotammadem/mademos/rust-os/specs/001-hello-boot/quickstart.md)
   and [specs/001-hello-boot/tasks.md](/Users/yotammadem/mademos/rust-os/specs/001-hello-boot/tasks.md).
 
-## Current Architecture
-
 ## Plain-English Explanation
 
 This project currently works more like a small UEFI program than a traditional
@@ -197,5 +195,3 @@ src/
 - Output currently uses the UEFI text output protocol rather than a graphical
   framebuffer implementation.
 - The architecture is still a boot milestone, not a general-purpose kernel.
-- The worktree still contains uncommitted implementation changes at the time this
-  report was written.

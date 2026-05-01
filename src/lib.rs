@@ -1,5 +1,10 @@
 #![no_std]
 
+pub mod arch;
+pub mod boot;
+pub mod kernel;
+pub mod memory;
+
 pub const BOOT_IMAGE_PATH: &str = "bin/hello-boot.img";
 pub const DEFAULT_OVMF_CODE: &str = "/usr/local/share/qemu/edk2-x86_64-code.fd";
 pub const HELLO_WORLD: &str = "hello world";
