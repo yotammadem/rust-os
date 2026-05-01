@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-- Rust nightly toolchain installed locally
-- GRUB host tooling available locally
+- Rust stable toolchain installed locally with the `x86_64-unknown-uefi` target
+- GRUB host tooling available locally via `x86_64-elf-grub-mkstandalone`
 - QEMU installed with `qemu-system-x86_64`
 - UEFI firmware file available at `/usr/local/share/qemu/edk2-x86_64-code.fd`
   or supplied through `OVMF_CODE=/path/to/firmware`
@@ -28,7 +28,7 @@ Expected result:
 Expected result:
 
 - `run.sh` checks that `bin/hello-boot.img` exists before launching
-- QEMU boots the raw disk image using UEFI firmware and GRUB
+- QEMU boots the raw disk image using UEFI `pflash` firmware and GRUB
 - The screen shows `hello world`
 - The system halts and keeps the message visible until the QEMU session is closed
 

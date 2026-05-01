@@ -1,0 +1,9 @@
+target/
+.build/
+bin/*
+!bin/.gitkeep
+.DS_Store
+*.log
+.env*
+.idea/
+.vscode/

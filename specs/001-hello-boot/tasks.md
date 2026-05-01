@@ -22,9 +22,9 @@ description: "Task list for implementing the Hello Boot feature"
 
 **Purpose**: Create the initial repository scaffolding and generated-output boundaries.
 
-- [ ] T001 Create the freestanding project layout in `./Cargo.toml`, `src/`, `asm/`, `linker/`, `grub/`, `tests/host/`, and `bin/.gitkeep`
-- [ ] T002 Initialize toolchain and ignore rules in `./rust-toolchain.toml` and `./.gitignore`
-- [ ] T003 [P] Add repository command surfaces in `./Makefile` and `./run.sh`
+- [X] T001 Create the freestanding project layout in `./Cargo.toml`, `src/`, `asm/`, `linker/`, `grub/`, `tests/host/`, and `bin/.gitkeep`
+- [X] T002 Initialize toolchain and ignore rules in `./rust-toolchain.toml` and `./.gitignore`
+- [X] T003 [P] Add repository command surfaces in `./Makefile` and `./run.sh`
 
 ---
 
@@ -34,13 +34,13 @@ description: "Task list for implementing the Hello Boot feature"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Configure freestanding Rust build settings in `./Cargo.toml` and `.cargo/config.toml`
-- [ ] T005 [P] Create the linker and GRUB baseline assets in `linker/x86_64.ld` and `grub/grub.cfg`
-- [ ] T006 [P] Implement the x86_64 bootstrap entry and halt symbols in `asm/boot.s`
-- [ ] T007 [P] Create the shared kernel module structure in `src/main.rs`, `src/boot/mod.rs`, `src/arch/x86_64/mod.rs`, and `src/kernel/mod.rs`
-- [ ] T008 Implement boot metadata parsing and framebuffer descriptors in `src/boot/multiboot.rs` and `src/arch/x86_64/framebuffer.rs`
-- [ ] T009 Isolate halt-path and low-level unsafe boundaries in `src/arch/x86_64/halt.rs`
-- [ ] T010 Document the baseline build and run validation flow in `specs/001-hello-boot/quickstart.md`
+- [X] T004 Configure freestanding Rust build settings in `./Cargo.toml` and `.cargo/config.toml`
+- [X] T005 [P] Create the linker and GRUB baseline assets in `linker/x86_64.ld` and `grub/grub.cfg`
+- [X] T006 [P] Implement the x86_64 bootstrap entry and halt symbols in `asm/boot.s`
+- [X] T007 [P] Create the shared kernel module structure in `src/main.rs`, `src/boot/mod.rs`, `src/arch/x86_64/mod.rs`, and `src/kernel/mod.rs`
+- [X] T008 Implement boot metadata parsing and framebuffer descriptors in `src/boot/multiboot.rs` and `src/arch/x86_64/framebuffer.rs`
+- [X] T009 Isolate halt-path and low-level unsafe boundaries in `src/arch/x86_64/halt.rs`
+- [X] T010 Document the baseline build and run validation flow in `specs/001-hello-boot/quickstart.md`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -54,17 +54,17 @@ description: "Task list for implementing the Hello Boot feature"
 
 ### Validation for User Story 1 ⚠️
 
-- [ ] T011 [P] [US1] Add a host-side build smoke check for image path expectations in `tests/host/build_artifact.rs`
-- [ ] T012 [US1] Record the MVP build verification steps in `specs/001-hello-boot/quickstart.md`
+- [X] T011 [P] [US1] Add a host-side build smoke check for image path expectations in `tests/host/build_artifact.rs`
+- [X] T012 [US1] Record the MVP build verification steps in `specs/001-hello-boot/quickstart.md`
 
 ### Implementation for User Story 1
 
-- [ ] T013 [P] [US1] Implement the kernel crate entry and panic behavior in `src/main.rs`
-- [ ] T014 [P] [US1] Implement the initial kernel control flow modules in `src/kernel/mod.rs` and `src/kernel/hello.rs`
-- [ ] T015 [US1] Wire the freestanding build pipeline to emit the kernel binary in `./Cargo.toml`, `.cargo/config.toml`, and `linker/x86_64.ld`
-- [ ] T016 [US1] Implement GRUB image staging and raw disk image creation in `./Makefile`
-- [ ] T017 [US1] Ensure generated artifacts stay under `bin/` by updating `./.gitignore` and `bin/.gitkeep`
-- [ ] T018 [US1] Update the build artifact contract in `specs/001-hello-boot/contracts/build-run-contract.md`
+- [X] T013 [P] [US1] Implement the kernel crate entry and panic behavior in `src/main.rs`
+- [X] T014 [P] [US1] Implement the initial kernel control flow modules in `src/kernel/mod.rs` and `src/kernel/hello.rs`
+- [X] T015 [US1] Wire the freestanding build pipeline to emit the kernel binary in `./Cargo.toml`, `.cargo/config.toml`, and `linker/x86_64.ld`
+- [X] T016 [US1] Implement GRUB image staging and raw disk image creation in `./Makefile`
+- [X] T017 [US1] Ensure generated artifacts stay under `bin/` by updating `./.gitignore` and `bin/.gitkeep`
+- [X] T018 [US1] Update the build artifact contract in `specs/001-hello-boot/contracts/build-run-contract.md`
 
 **Checkpoint**: User Story 1 should build `bin/hello-boot.img` reliably from `make build`
 
@@ -78,15 +78,15 @@ description: "Task list for implementing the Hello Boot feature"
 
 ### Validation for User Story 2 ⚠️
 
-- [ ] T019 [P] [US2] Add a host-side script contract check for missing-image failure behavior in `tests/host/run_contract.rs`
-- [ ] T020 [US2] Record the run-script success and failure scenarios in `specs/001-hello-boot/quickstart.md`
+- [X] T019 [P] [US2] Add a host-side script contract check for missing-image failure behavior in `tests/host/run_contract.rs`
+- [X] T020 [US2] Record the run-script success and failure scenarios in `specs/001-hello-boot/quickstart.md`
 
 ### Implementation for User Story 2
 
-- [ ] T021 [P] [US2] Implement QEMU and firmware path resolution in `./run.sh`
-- [ ] T022 [US2] Enforce fail-fast missing-image and missing-firmware errors in `./run.sh`
-- [ ] T023 [US2] Align the `make build` output naming and `./run.sh` input contract in `./Makefile` and `./run.sh`
-- [ ] T024 [US2] Update the run interface contract in `specs/001-hello-boot/contracts/build-run-contract.md`
+- [X] T021 [P] [US2] Implement QEMU and firmware path resolution in `./run.sh`
+- [X] T022 [US2] Enforce fail-fast missing-image and missing-firmware errors in `./run.sh`
+- [X] T023 [US2] Align the `make build` output naming and `./run.sh` input contract in `./Makefile` and `./run.sh`
+- [X] T024 [US2] Update the run interface contract in `specs/001-hello-boot/contracts/build-run-contract.md`
 
 **Checkpoint**: User Story 2 should start QEMU from `./run.sh` using the latest built image and fail clearly when prerequisites are absent
 
@@ -100,16 +100,16 @@ description: "Task list for implementing the Hello Boot feature"
 
 ### Validation for User Story 3 ⚠️
 
-- [ ] T025 [P] [US3] Add a host-side rendering helper check in `tests/host/framebuffer_console.rs`
-- [ ] T026 [US3] Record the end-to-end boot validation procedure in `specs/001-hello-boot/quickstart.md`
+- [X] T025 [P] [US3] Add a host-side rendering helper check in `tests/host/framebuffer_console.rs`
+- [X] T026 [US3] Record the end-to-end boot validation procedure in `specs/001-hello-boot/quickstart.md`
 
 ### Implementation for User Story 3
 
-- [ ] T027 [P] [US3] Implement framebuffer write primitives and glyph rendering in `src/arch/x86_64/framebuffer.rs`
-- [ ] T028 [P] [US3] Implement the hello-world boot path in `src/kernel/hello.rs`
-- [ ] T029 [US3] Connect boot metadata, framebuffer setup, and kernel execution in `src/boot/multiboot.rs`, `src/boot/mod.rs`, and `src/main.rs`
-- [ ] T030 [US3] Finalize the visible halted state in `src/arch/x86_64/halt.rs` and `asm/boot.s`
-- [ ] T031 [US3] Update the observable boot contract in `specs/001-hello-boot/contracts/build-run-contract.md`
+- [X] T027 [P] [US3] Implement framebuffer write primitives and glyph rendering in `src/arch/x86_64/framebuffer.rs`
+- [X] T028 [P] [US3] Implement the hello-world boot path in `src/kernel/hello.rs`
+- [X] T029 [US3] Connect boot metadata, framebuffer setup, and kernel execution in `src/boot/multiboot.rs`, `src/boot/mod.rs`, and `src/main.rs`
+- [X] T030 [US3] Finalize the visible halted state in `src/arch/x86_64/halt.rs` and `asm/boot.s`
+- [X] T031 [US3] Update the observable boot contract in `specs/001-hello-boot/contracts/build-run-contract.md`
 
 **Checkpoint**: All user stories should now be independently functional, including the visible halted hello-world boot result
 
@@ -119,9 +119,9 @@ description: "Task list for implementing the Hello Boot feature"
 
 **Purpose**: Tighten documentation, repeatability, and overall validation.
 
-- [ ] T032 [P] Refresh plan-aligned usage and prerequisites in `./AGENTS.md` and `specs/001-hello-boot/quickstart.md`
-- [ ] T033 Run the full validation sequence with `cargo fmt --check`, `cargo check`, `make build`, and `./run.sh`, then capture any required doc fixes in `specs/001-hello-boot/quickstart.md`
-- [ ] T034 [P] Reduce unnecessary unsafe or assembly surface discovered during implementation in `src/arch/x86_64/`, `src/boot/`, and `asm/boot.s`
+- [X] T032 [P] Refresh plan-aligned usage and prerequisites in `./AGENTS.md` and `specs/001-hello-boot/quickstart.md`
+- [X] T033 Run the full validation sequence with `cargo fmt --check`, `cargo check`, `make build`, and `./run.sh`, then capture any required doc fixes in `specs/001-hello-boot/quickstart.md`
+- [X] T034 [P] Reduce unnecessary unsafe or assembly surface discovered during implementation in `src/arch/x86_64/`, `src/boot/`, and `asm/boot.s`
 
 ---
 
