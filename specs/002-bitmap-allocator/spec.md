@@ -5,6 +5,13 @@
 **Status**: Draft  
 **Input**: User description: "Create basic bitmap memory allocator. The allocator will get the available memory from grub and will manage a bitmap of used pages. It will expose a way to allocate a new page (or number of pages) and mark them as used. It will also allow freeing a used page that is no longer needed"
 
+## Clarifications
+
+### Session 2026-05-01
+
+- Q: Should multi-page allocation return contiguous physical pages or any free pages? → A: Multi-page allocation must return one contiguous physical page range.
+- Q: How should invalid free requests behave? → A: Invalid free returns failure and leaves allocator state unchanged.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Initialize Allocator State (Priority: P1)
@@ -49,8 +56,8 @@ that exceed the currently available space.
    requests one page, **Then** the allocator returns one usable page and marks it
    as used.
 2. **Given** an initialized allocator with a large enough contiguous free range,
-   **When** the caller requests multiple pages, **Then** the allocator returns a
-   valid page range and marks every page in that range as used.
+   **When** the caller requests multiple pages, **Then** the allocator returns one
+   contiguous physical page range and marks every page in that range as used.
 3. **Given** an initialized allocator without enough free pages to satisfy the
    request, **When** allocation is requested, **Then** the allocator reports
    failure without corrupting its page-tracking state.
@@ -77,8 +84,8 @@ never valid for freeing.
    the caller frees the full range, **Then** each page in that range becomes
    available again.
 3. **Given** a page range that is not a currently owned allocation, **When**
-   the caller attempts to free it, **Then** the allocator rejects the request or
-   handles it safely without corrupting allocator state.
+   the caller attempts to free it, **Then** the allocator returns failure and
+   leaves allocator state unchanged.
 
 ### Edge Cases
 
@@ -88,6 +95,7 @@ never valid for freeing.
 - What happens if a free request overlaps pages that were never allocated by the
   allocator?
 - How does the allocator handle requests for zero pages?
+- Invalid free requests must fail without changing allocator bookkeeping.
 
 ## Requirements *(mandatory)*
 
@@ -100,7 +108,7 @@ never valid for freeing.
   are reserved, unavailable, or already occupied during initialization.
 - **FR-004**: The allocator MUST expose a way to allocate one free page.
 - **FR-005**: The allocator MUST expose a way to allocate multiple pages in a
-  single request.
+  single request as one contiguous physical page range.
 - **FR-006**: Successful allocation MUST mark the returned pages as used before
   control returns to the caller.
 - **FR-007**: If a request cannot be satisfied, the allocator MUST report failure
@@ -110,7 +118,7 @@ never valid for freeing.
 - **FR-009**: Successful free operations MUST mark the released pages as
   available again.
 - **FR-010**: The allocator MUST prevent or safely reject invalid free operations
-  that would corrupt allocator state.
+  by returning failure and leaving allocator state unchanged.
 - **FR-011**: The allocator MUST avoid offering pages already occupied by kernel,
   boot, or allocator-owned metadata.
 
@@ -148,9 +156,12 @@ never valid for freeing.
 - **SC-002**: A single-page request succeeds whenever at least one free page is
   available and fails cleanly when no such page exists.
 - **SC-003**: A multi-page request succeeds only when enough free pages are
-  available for the requested range and otherwise leaves allocator state unchanged.
+  available in one contiguous range for the requested allocation and otherwise
+  leaves allocator state unchanged.
 - **SC-004**: A previously allocated page range can be freed and reused by a later
   allocation without corrupting allocator bookkeeping.
+- **SC-005**: An invalid free request fails deterministically and does not change
+  the allocator's tracked free or used page state.
 
 ## Assumptions
 
