@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HELLO_WORLD = "hello world"
+PAGING_ROOT = "paging root:"
 BUILD_TIMEOUT_SECS = 60
 BOOT_TIMEOUT_SECS = 12
 TARGET = "x86_64-unknown-uefi"
@@ -26,6 +27,14 @@ class BootSerialE2ETest(unittest.TestCase):
         self._build_efi_tree()
 
         transcript = self._run_qemu_under_pty()
+        self.assertIn(
+            PAGING_ROOT,
+            transcript,
+            msg=(
+                f"serial transcript did not contain `{PAGING_ROOT}` within "
+                f"{BOOT_TIMEOUT_SECS}s:\n{transcript}"
+            ),
+        )
         self.assertIn(
             HELLO_WORLD,
             transcript,

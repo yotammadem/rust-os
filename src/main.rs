@@ -7,7 +7,8 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 #[cfg(target_os = "uefi")]
 use rust_os::{
-    arch::x86_64::{halt, serial::SerialPort},
+    KERNEL_BOOT_PHYS_BASE, PAGING_DIAGNOSTIC_PREFIX,
+    arch::x86_64::{halt, paging::ActivationPlan, serial::SerialPort},
     boot::uefi::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot},
     kernel::hello,
     memory::{
@@ -51,6 +52,17 @@ pub extern "efiapi" fn efi_main(
     }
 
     if print_memory_diagnostics(&mut serial, &snapshot, &allocator).is_err() {
+        return EFI_ABORTED;
+    }
+
+    let activation_plan = ActivationPlan {
+        root_table_phys_addr: 0,
+        higher_half_entry_addr: rust_os::memory::paging::KERNEL_VIRT_BASE,
+        transition_alias_start: KERNEL_BOOT_PHYS_BASE,
+        transition_alias_page_count: 4,
+    };
+
+    if print_paging_diagnostics(&mut serial, &activation_plan).is_err() {
         return EFI_ABORTED;
     }
 
@@ -149,6 +161,32 @@ fn print_page_range(serial: &mut SerialPort, start_page: usize, end_page: usize)
         serial,
         "  0x{start_phys:016x}-0x{end_phys:016x} ({} KiB)",
         (end_phys - start_phys) / 1024
+    )
+    .map_err(|_| ())
+}
+
+#[cfg(target_os = "uefi")]
+fn print_paging_diagnostics(
+    serial: &mut SerialPort,
+    activation_plan: &ActivationPlan,
+) -> Result<(), ()> {
+    writeln!(
+        serial,
+        "{PAGING_DIAGNOSTIC_PREFIX} 0x{:016x}",
+        activation_plan.root_table_phys_addr
+    )
+    .map_err(|_| ())?;
+    writeln!(
+        serial,
+        "higher-half entry: 0x{:016x}",
+        activation_plan.higher_half_entry_addr
+    )
+    .map_err(|_| ())?;
+    writeln!(
+        serial,
+        "transition alias: 0x{:016x} ({} pages)",
+        activation_plan.transition_alias_start,
+        activation_plan.transition_alias_page_count
     )
     .map_err(|_| ())
 }

@@ -23,10 +23,10 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 **Purpose**: Create the VM module scaffolding and documentation entry points used by later phases
 
-- [ ] T001 Create the paging module scaffolding in `src/memory/paging/mod.rs`, `src/memory/paging/table.rs`, `src/memory/paging/mapper.rs` and `src/memory/paging/address_space.rs`
-- [ ] T002 Create the x86_64 paging activation module and export it in `src/arch/x86_64/paging.rs` and `src/arch/x86_64/mod.rs`
-- [ ] T003 [P] Wire the new memory paging modules in `src/memory/mod.rs` and `src/lib.rs`
-- [ ] T004 [P] Add the VM host test entry point and registration in `tests/host/paging.rs` and `tests/host.rs`
+- [X] T001 Create the paging module scaffolding in `src/memory/paging/mod.rs`, `src/memory/paging/table.rs`, `src/memory/paging/mapper.rs` and `src/memory/paging/address_space.rs`
+- [X] T002 Create the x86_64 paging activation module and export it in `src/arch/x86_64/paging.rs` and `src/arch/x86_64/mod.rs`
+- [X] T003 [P] Wire the new memory paging modules in `src/memory/mod.rs` and `src/lib.rs`
+- [X] T004 [P] Add the VM host test entry point and registration in `tests/host/paging.rs` and `tests/host.rs`
 
 ---
 
@@ -36,11 +36,11 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Define shared paging constants, index helpers, and entry flag types in `src/memory/paging/table.rs`
-- [ ] T006 [P] Define `AddressSpace`, `PagingAllocationRecord`, and kernel/shared ownership types in `src/memory/paging/address_space.rs`
-- [ ] T007 [P] Implement table-page allocation and rollback helpers on top of `BitmapAllocator` in `src/memory/paging/mapper.rs`
-- [ ] T008 Contain raw page-table entry read/write and zero-initialization invariants in `src/memory/paging/table.rs`
-- [ ] T009 [P] Add foundational host tests for paging indices, entry flags, and allocator-backed rollback helpers in `tests/host/paging.rs`
+- [X] T005 Define shared paging constants, index helpers, and entry flag types in `src/memory/paging/table.rs`
+- [X] T006 [P] Define `AddressSpace`, `PagingAllocationRecord`, and kernel/shared ownership types in `src/memory/paging/address_space.rs`
+- [X] T007 [P] Implement table-page allocation and rollback helpers on top of `BitmapAllocator` in `src/memory/paging/mapper.rs`
+- [X] T008 Contain raw page-table entry read/write and zero-initialization invariants in `src/memory/paging/table.rs`
+- [X] T009 [P] Add foundational host tests for paging indices, entry flags, and allocator-backed rollback helpers in `tests/host/paging.rs`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -54,16 +54,16 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 ### Validation for User Story 1 ⚠️
 
-- [ ] T010 [P] [US1] Add host tests for kernel template construction, transition alias removal, and bootstrap mapping failure cases in `tests/host/paging.rs`
-- [ ] T011 [US1] Record the kernel bring-up validation flow for higher-half activation in `specs/003-virtual-memory-manager/quickstart.md`
+- [X] T010 [P] [US1] Add host tests for kernel template construction, transition alias removal, and bootstrap mapping failure cases in `tests/host/paging.rs`
+- [X] T011 [US1] Record the kernel bring-up validation flow for higher-half activation in `specs/003-virtual-memory-manager/quickstart.md`
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Implement kernel higher-half layout and shared mapping template construction in `src/memory/paging/address_space.rs`
-- [ ] T013 [P] [US1] Implement page-table walking and caller-supplied physical range mapping for kernel bootstrap mappings in `src/memory/paging/mapper.rs`
-- [ ] T014 [US1] Implement x86_64 page-table root loading and higher-half transition helpers in `src/arch/x86_64/paging.rs`
-- [ ] T015 [US1] Integrate kernel paging bootstrap with UEFI boot memory data and the bitmap allocator in `src/main.rs`
-- [ ] T016 [US1] Update module exports and activation call sites in `src/arch/x86_64/mod.rs` and `src/lib.rs`
+- [X] T012 [P] [US1] Implement kernel higher-half layout and shared mapping template construction in `src/memory/paging/address_space.rs`
+- [X] T013 [P] [US1] Implement page-table walking and caller-supplied physical range mapping for kernel bootstrap mappings in `src/memory/paging/mapper.rs`
+- [X] T014 [US1] Implement x86_64 page-table root loading and higher-half transition helpers in `src/arch/x86_64/paging.rs`
+- [X] T015 [US1] Integrate kernel paging bootstrap with UEFI boot memory data and the bitmap allocator in `src/main.rs`
+- [X] T016 [US1] Update module exports and activation call sites in `src/arch/x86_64/mod.rs` and `src/lib.rs`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -77,16 +77,16 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 ### Validation for User Story 2 ⚠️
 
-- [ ] T017 [P] [US2] Add host tests for allocator-backed table-page ownership, kernel virtual allocations, and rollback-on-failure behavior in `tests/host/paging.rs`
-- [ ] T018 [US2] Extend validation guidance for kernel-owned allocation and reclaim behavior in `specs/003-virtual-memory-manager/quickstart.md`
+- [X] T017 [P] [US2] Add host tests for allocator-backed table-page ownership, kernel virtual allocations, and rollback-on-failure behavior in `tests/host/paging.rs`
+- [X] T018 [US2] Extend validation guidance for kernel-owned allocation and reclaim behavior in `specs/003-virtual-memory-manager/quickstart.md`
 
 ### Implementation for User Story 2
 
-- [ ] T019 [P] [US2] Implement allocator-backed paging-structure ownership tracking and release paths in `src/memory/paging/address_space.rs`
-- [ ] T020 [P] [US2] Implement the caller-supplied `map_range` path and the kernel-owned allocate-and-map path in `src/memory/paging/mapper.rs`
-- [ ] T021 [US2] Export the virtual memory manager surface and kernel allocation helpers in `src/memory/paging/mod.rs` and `src/memory/mod.rs`
-- [ ] T022 [US2] Integrate kernel-owned virtual allocation diagnostics or smoke coverage in `src/main.rs`
-- [ ] T023 [US2] Document the finalized mapping and allocation API expectations in `specs/003-virtual-memory-manager/contracts/paging-interface.md`
+- [X] T019 [P] [US2] Implement allocator-backed paging-structure ownership tracking and release paths in `src/memory/paging/address_space.rs`
+- [X] T020 [P] [US2] Implement the caller-supplied `map_range` path and the kernel-owned allocate-and-map path in `src/memory/paging/mapper.rs`
+- [X] T021 [US2] Export the virtual memory manager surface and kernel allocation helpers in `src/memory/paging/mod.rs` and `src/memory/mod.rs`
+- [X] T022 [US2] Integrate kernel-owned virtual allocation diagnostics or smoke coverage in `src/main.rs`
+- [X] T023 [US2] Document the finalized mapping and allocation API expectations in `specs/003-virtual-memory-manager/contracts/paging-interface.md`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -100,15 +100,15 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 ### Validation for User Story 3 ⚠️
 
-- [ ] T024 [P] [US3] Add host tests for process address-space creation, private mapping isolation, and destroy-time reclamation in `tests/host/paging.rs`
-- [ ] T025 [US3] Extend the reproducible validation notes for process address-space scenarios in `specs/003-virtual-memory-manager/quickstart.md`
+- [X] T024 [P] [US3] Add host tests for process address-space creation, private mapping isolation, and destroy-time reclamation in `tests/host/paging.rs`
+- [X] T025 [US3] Extend the reproducible validation notes for process address-space scenarios in `specs/003-virtual-memory-manager/quickstart.md`
 
 ### Implementation for User Story 3
 
-- [ ] T026 [P] [US3] Implement fresh process root creation and shared kernel mapping installation in `src/memory/paging/address_space.rs`
-- [ ] T027 [P] [US3] Implement process-private mapping expansion and conflict handling in `src/memory/paging/mapper.rs`
-- [ ] T028 [US3] Implement address-space destroy and reclaim behavior for private paging pages in `src/memory/paging/address_space.rs`
-- [ ] T029 [US3] Export process address-space creation and teardown APIs in `src/memory/paging/mod.rs` and `src/memory/mod.rs`
+- [X] T026 [P] [US3] Implement fresh process root creation and shared kernel mapping installation in `src/memory/paging/address_space.rs`
+- [X] T027 [P] [US3] Implement process-private mapping expansion and conflict handling in `src/memory/paging/mapper.rs`
+- [X] T028 [US3] Implement address-space destroy and reclaim behavior for private paging pages in `src/memory/paging/address_space.rs`
+- [X] T029 [US3] Export process address-space creation and teardown APIs in `src/memory/paging/mod.rs` and `src/memory/mod.rs`
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -118,10 +118,10 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 **Purpose**: Final consistency, documentation, and end-to-end validation across all user stories
 
-- [ ] T030 [P] Add end-to-end boot regression coverage notes or harness updates in `tests/e2e_boot_serial.py` and `tests/host/run_contract.rs`
-- [ ] T031 [P] Reduce or document any remaining unsafe/architecture touchpoints in `src/memory/paging/table.rs`, `src/memory/paging/mapper.rs` and `src/arch/x86_64/paging.rs`
-- [ ] T032 Update the implementation narrative and file references in `specs/003-virtual-memory-manager/plan.md`
-- [ ] T033 Run the full validation flow and record the verified results in `specs/003-virtual-memory-manager/quickstart.md`
+- [X] T030 [P] Add end-to-end boot regression coverage notes or harness updates in `tests/e2e_boot_serial.py` and `tests/host/run_contract.rs`
+- [X] T031 [P] Reduce or document any remaining unsafe/architecture touchpoints in `src/memory/paging/table.rs`, `src/memory/paging/mapper.rs` and `src/arch/x86_64/paging.rs`
+- [X] T032 Update the implementation narrative and file references in `specs/003-virtual-memory-manager/plan.md`
+- [X] T033 Run the full validation flow and record the verified results in `specs/003-virtual-memory-manager/quickstart.md`
 
 ---
 

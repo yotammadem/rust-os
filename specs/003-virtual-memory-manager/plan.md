@@ -108,6 +108,16 @@ structures, mapping logic, and address-space ownership model live under a new
 handoff, architecture hooks, and memory management while making per-process
 address-space creation testable on the host.
 
+## Implementation Notes
+
+The implemented milestone delivers an allocator-backed paging model under
+`src/memory/paging/` with host-side coverage for kernel template construction,
+rollback-safe table allocation, kernel-owned virtual allocations, and
+process-private mapping isolation. The x86_64 layer now owns the page-table-root
+activation surface in `src/arch/x86_64/paging.rs`, while the EFI boot path
+currently uses that work in diagnostic form by printing the modeled higher-half
+entry and transition-alias metadata without mutating live runtime page tables.
+
 ## Complexity Tracking
 
 No constitution violations are expected. The main planned complexity is a narrow

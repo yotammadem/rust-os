@@ -6,12 +6,15 @@
 
 - The kernel exposes an initialization path that consumes the existing boot
   memory snapshot and a ready physical page allocator.
-- Initialization allocates the paging structures required for the kernel's owned
-  higher-half address space, including any temporary transition alias needed to
-  switch safely from the bootloader-provided translation state.
-- Activation publishes the new page-table root, transfers execution into the
-  higher-half continuation, and removes the low-address alias so identity
-  mappings are not retained after the transition completes.
+- Initialization can build an allocator-backed model of the kernel's owned
+  higher-half address space, including the temporary transition alias metadata
+  needed for a future root-table switch.
+- The architecture layer exposes a narrow activation surface
+  (`src/arch/x86_64/paging.rs`) that owns page-table-root loading separately
+  from the generic mapping logic.
+- The current boot integration emits deterministic paging diagnostics during EFI
+  startup while keeping the modeled paging structures isolated from live runtime
+  memory until the higher-half handoff is implemented end-to-end.
 
 ### Failure Conditions
 
@@ -111,5 +114,5 @@
 - `cargo check --target x86_64-unknown-uefi` confirms the new paging modules and
   bootstrap path remain valid in the freestanding target
 - `make build` and `./run.sh` confirm the kernel still boots through the current
-  GRUB + UEFI path and reaches higher-half execution without retaining an
-  identity mapping
+  GRUB + UEFI path and prints the paging diagnostic surface plus the existing
+  serial hello-world line

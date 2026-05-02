@@ -35,11 +35,10 @@ Expected result:
 
 - The EFI payload rebuilds successfully with the new paging code linked in
 - QEMU still boots through GRUB and transfers control to the kernel
-- The kernel constructs its owned paging hierarchy, switches into the higher-half
-  mapping, drops the temporary low-address alias, and continues execution
-  without a retained identity mapping
-- Process address-space creation paths that run during boot diagnostics, if any,
-  report deterministic success or failure without leaking allocator-owned pages
+- The kernel prints the paging diagnostic prefix, higher-half entry target, and
+  transition-alias metadata on serial before the existing `hello world` line
+- Host-side paging construction, process-space creation, rollback, and reclaim
+  behavior remain covered by `cargo test`
 
 ## Clean Rebuild
 
@@ -62,3 +61,15 @@ make build
   partially mapped state
 - Destroying a process address space reclaims only its private paging pages and
   must not free shared kernel higher-half structures
+
+## Verified Results
+
+Verified on 2026-05-02 with the current implementation:
+
+- `cargo test` passed with 25 host tests, including paging index, kernel
+  template, rollback, kernel allocation, process isolation, and destroy-path
+  coverage.
+- `cargo check --target x86_64-unknown-uefi` passed.
+- `make build` passed and staged the EFI tree under `.build/efi`.
+- A short `./run.sh` transcript confirmed `paging root:`, the higher-half entry
+  line, the transition alias line, and `hello world` on serial.
