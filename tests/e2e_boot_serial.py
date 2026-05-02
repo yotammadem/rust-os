@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HELLO_WORLD = "hello world"
+DIRECT_MAP_SMOKE = "direct-map smoke:"
 PAGING_ROOT = "paging root:"
 BUILD_TIMEOUT_SECS = 60
 BOOT_TIMEOUT_SECS = 12
@@ -40,6 +41,14 @@ class BootSerialE2ETest(unittest.TestCase):
             transcript,
             msg=(
                 f"serial transcript did not contain `{HELLO_WORLD}` within "
+                f"{BOOT_TIMEOUT_SECS}s:\n{transcript}"
+            ),
+        )
+        self.assertIn(
+            DIRECT_MAP_SMOKE,
+            transcript,
+            msg=(
+                f"serial transcript did not contain `{DIRECT_MAP_SMOKE}` within "
                 f"{BOOT_TIMEOUT_SECS}s:\n{transcript}"
             ),
         )
@@ -115,7 +124,7 @@ class BootSerialE2ETest(unittest.TestCase):
                         break
                     chunks.append(chunk)
                     transcript = b"".join(chunks).decode("utf-8", errors="replace")
-                    if HELLO_WORLD in transcript:
+                    if HELLO_WORLD in transcript and DIRECT_MAP_SMOKE in transcript:
                         return transcript
 
                 exit_code = process.poll()

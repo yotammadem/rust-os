@@ -73,3 +73,12 @@
 - `make build` rebuilds and stages the EFI payload with the live handoff code
 - `./run.sh` produces a QEMU transcript showing that `hello world` is printed
   after the root switch and that the direct-map smoke path succeeds
+
+## Unsafe Boundaries
+
+- `src/memory/paging/address_space.rs` confines boot-time paging-frame zeroing
+  and page-table entry publication to allocator-owned 4 KiB frames
+- `src/main.rs` confines direct-map smoke access to pages returned by the
+  bitmap allocator and rejects out-of-range physical addresses before use
+- `src/arch/x86_64/paging.rs` confines CR3 mutation to the architecture layer
+  through `load_page_table_root()` and `activate()`

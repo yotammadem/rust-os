@@ -1,7 +1,10 @@
 use crate::memory::{PAGE_SIZE, PhysAddr};
 
 pub const PAGE_TABLE_ENTRIES: usize = 512;
+pub const PAGE_TABLE_ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
 pub const KERNEL_VIRT_BASE: u64 = 0xffff_8000_0000_0000;
+pub const KERNEL_DIRECT_MAP_BASE: u64 = 0xffff_8080_0000_0000;
+pub const KERNEL_DIRECT_MAP_LIMIT: u64 = 0xffff_8100_0000_0000;
 pub const KERNEL_ALLOC_BASE: u64 = KERNEL_VIRT_BASE + 0x0200_0000;
 pub const KERNEL_ALLOC_LIMIT: u64 = KERNEL_VIRT_BASE + 0x4000_0000;
 pub const PROCESS_PRIVATE_LIMIT: u64 = 0x0000_8000_0000_0000;
@@ -93,6 +96,10 @@ pub struct MappedPage {
 pub struct VirtualAddressLayout;
 
 impl VirtualAddressLayout {
+    pub const fn direct_map_window_size_bytes() -> u64 {
+        KERNEL_DIRECT_MAP_LIMIT - KERNEL_DIRECT_MAP_BASE
+    }
+
     pub const fn pml4_index(addr: u64) -> usize {
         ((addr >> 39) & 0x1ff) as usize
     }
@@ -130,7 +137,43 @@ impl VirtualAddressLayout {
         addr >= KERNEL_VIRT_BASE
     }
 
+    pub const fn is_direct_map_address(addr: u64) -> bool {
+        addr >= KERNEL_DIRECT_MAP_BASE && addr < KERNEL_DIRECT_MAP_LIMIT
+    }
+
     pub const fn is_process_private_address(addr: u64) -> bool {
         addr < PROCESS_PRIVATE_LIMIT
+    }
+
+    pub const fn phys_to_direct_map_virt(
+        phys_addr: PhysAddr,
+        managed_phys_limit: PhysAddr,
+    ) -> Option<u64> {
+        if phys_addr >= managed_phys_limit {
+            return None;
+        }
+
+        let virt_addr = KERNEL_DIRECT_MAP_BASE + phys_addr;
+        if virt_addr < KERNEL_DIRECT_MAP_LIMIT {
+            Some(virt_addr)
+        } else {
+            None
+        }
+    }
+
+    pub const fn direct_map_virt_to_phys(
+        virt_addr: u64,
+        managed_phys_limit: PhysAddr,
+    ) -> Option<PhysAddr> {
+        if !Self::is_direct_map_address(virt_addr) {
+            return None;
+        }
+
+        let phys_addr = virt_addr - KERNEL_DIRECT_MAP_BASE;
+        if phys_addr < managed_phys_limit {
+            Some(phys_addr)
+        } else {
+            None
+        }
     }
 }

@@ -1,5 +1,5 @@
 use rust_os::{
-    DEFAULT_OVMF_CODE, PAGING_DIAGNOSTIC_PREFIX, RUN_MISSING_ARTIFACT_ERROR,
+    DEFAULT_OVMF_CODE, DIRECT_MAP_SMOKE_PREFIX, PAGING_DIAGNOSTIC_PREFIX, RUN_MISSING_ARTIFACT_ERROR,
     RUN_MISSING_FIRMWARE_ERROR,
 };
 
@@ -20,4 +20,9 @@ fn run_errors_are_clear() {
 #[test]
 fn paging_diagnostic_prefix_is_stable() {
     assert_eq!(PAGING_DIAGNOSTIC_PREFIX, "paging root:");
+}
+
+#[test]
+fn direct_map_smoke_prefix_is_stable() {
+    assert_eq!(DIRECT_MAP_SMOKE_PREFIX, "direct-map smoke:");
 }

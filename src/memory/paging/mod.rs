@@ -8,6 +8,7 @@ pub use address_space::{
 };
 pub use mapper::{map_range, unmap_range, PagingError};
 pub use table::{
-    EntryFlags, MappingRequest, MappedPage, PageTableLevel, VirtualAddressLayout,
-    KERNEL_ALLOC_BASE, KERNEL_ALLOC_LIMIT, KERNEL_VIRT_BASE, PAGE_TABLE_ENTRIES,
+    EntryFlags, MappingRequest, MappedPage, PAGE_TABLE_ADDR_MASK, PageTableLevel,
+    VirtualAddressLayout, KERNEL_ALLOC_BASE, KERNEL_ALLOC_LIMIT, KERNEL_DIRECT_MAP_BASE,
+    KERNEL_DIRECT_MAP_LIMIT, KERNEL_VIRT_BASE, PAGE_TABLE_ENTRIES,
 };

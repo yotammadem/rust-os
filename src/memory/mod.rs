@@ -9,6 +9,7 @@ pub use map::{
 };
 pub use paging::{
     AddressSpace, AddressSpaceKind, EntryFlags, KernelMappingTemplate, KernelVirtualAllocation,
-    MappedPage, MappingRequest, PAGE_TABLE_ENTRIES, PageTableLevel, PagingAllocationRecord,
-    PagingError, VirtualAddressLayout, map_range, unmap_range,
+    KERNEL_DIRECT_MAP_BASE, KERNEL_DIRECT_MAP_LIMIT, MappedPage, MappingRequest,
+    KERNEL_VIRT_BASE, PAGE_TABLE_ADDR_MASK, PAGE_TABLE_ENTRIES, PageTableLevel,
+    PagingAllocationRecord, PagingError, VirtualAddressLayout, map_range, unmap_range,
 };

@@ -7,15 +7,18 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 #[cfg(target_os = "uefi")]
 use rust_os::{
-    KERNEL_BOOT_PHYS_BASE, PAGING_DIAGNOSTIC_PREFIX,
+    DIRECT_MAP_SMOKE_PREFIX, KERNEL_BOOT_PHYS_BASE, PAGING_DIAGNOSTIC_PREFIX,
     arch::x86_64::{halt, paging::ActivationPlan, serial::SerialPort},
     boot::uefi::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot},
     kernel::hello,
     memory::{
-        AllocationResult, BitmapAllocator, MAX_MEMORY_REGIONS, MemoryRegion, PAGE_SIZE, PageSpan,
-        RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES,
+        AllocationResult, BitmapAllocator, KERNEL_VIRT_BASE, MAX_MEMORY_REGIONS, MemoryRegion,
+        PAGE_SIZE, PageSpan, RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES, VirtualAddressLayout,
     },
 };
+
+#[cfg(target_os = "uefi")]
+const KERNEL_BOOT_PAGE_COUNT: usize = 4;
 
 #[cfg(not(target_os = "uefi"))]
 fn main() {}
@@ -47,22 +50,33 @@ pub extern "efiapi" fn efi_main(
         Err(_) => return EFI_ABORTED,
     };
 
-    if smoke_test_allocated_page(&mut allocator).is_err() {
-        return EFI_ABORTED;
-    }
-
     if print_memory_diagnostics(&mut serial, &snapshot, &allocator).is_err() {
         return EFI_ABORTED;
     }
 
-    let activation_plan = ActivationPlan {
-        root_table_phys_addr: 0,
-        higher_half_entry_addr: rust_os::memory::paging::KERNEL_VIRT_BASE,
-        transition_alias_start: KERNEL_BOOT_PHYS_BASE,
-        transition_alias_page_count: 4,
+    let (kernel_space, template) = match rust_os::memory::AddressSpace::create_kernel_template(
+        &mut allocator,
+        KERNEL_BOOT_PHYS_BASE,
+        KERNEL_BOOT_PAGE_COUNT,
+    ) {
+        Ok(result) => result,
+        Err(_) => return EFI_ABORTED,
     };
 
-    if print_paging_diagnostics(&mut serial, &activation_plan).is_err() {
+    let activation_plan =
+        ActivationPlan::from_template(kernel_space.root_table_phys_addr, KERNEL_VIRT_BASE, &template);
+
+    if print_paging_diagnostics(&mut serial, &activation_plan, kernel_space.managed_phys_limit())
+        .is_err()
+    {
+        return EFI_ABORTED;
+    }
+
+    unsafe { rust_os::arch::x86_64::paging::activate(activation_plan) };
+
+    if smoke_test_direct_map_page(&mut serial, &mut allocator, kernel_space.managed_phys_limit())
+        .is_err()
+    {
         return EFI_ABORTED;
     }
 
@@ -75,15 +89,23 @@ pub extern "efiapi" fn efi_main(
 }
 
 #[cfg(target_os = "uefi")]
-fn smoke_test_allocated_page(allocator: &mut BitmapAllocator<'_>) -> Result<(), ()> {
+fn smoke_test_direct_map_page(
+    serial: &mut SerialPort,
+    allocator: &mut BitmapAllocator<'_>,
+    managed_phys_limit: u64,
+) -> Result<(), ()> {
     const TEST_PATTERN: u64 = 0x5a17_c0de_d15e_a5e5;
 
     let AllocationResult::Allocated(span) = allocator.allocate_page() else {
         return Err(());
     };
 
-    let page_ptr = span.start_phys_addr as *mut u64;
+    let direct_map_virt_addr =
+        VirtualAddressLayout::phys_to_direct_map_virt(span.start_phys_addr, managed_phys_limit)
+            .ok_or(())?;
+    let page_ptr = direct_map_virt_addr as *mut u64;
     unsafe {
+        core::ptr::write_bytes(page_ptr.cast::<u8>(), 0, PAGE_SIZE);
         core::ptr::write_volatile(page_ptr, TEST_PATTERN);
         if core::ptr::read_volatile(page_ptr) != TEST_PATTERN {
             return Err(());
@@ -91,7 +113,13 @@ fn smoke_test_allocated_page(allocator: &mut BitmapAllocator<'_>) -> Result<(), 
     }
 
     match allocator.free_pages(span) {
-        AllocationResult::Released(_) => Ok(()),
+        AllocationResult::Released(_) => writeln!(
+            serial,
+            "{DIRECT_MAP_SMOKE_PREFIX} phys=0x{:016x} virt=0x{:016x}",
+            span.start_phys_addr,
+            direct_map_virt_addr
+        )
+        .map_err(|_| ()),
         _ => Err(()),
     }
 }
@@ -169,6 +197,7 @@ fn print_page_range(serial: &mut SerialPort, start_page: usize, end_page: usize)
 fn print_paging_diagnostics(
     serial: &mut SerialPort,
     activation_plan: &ActivationPlan,
+    managed_phys_limit: u64,
 ) -> Result<(), ()> {
     writeln!(
         serial,
@@ -187,6 +216,13 @@ fn print_paging_diagnostics(
         "transition alias: 0x{:016x} ({} pages)",
         activation_plan.transition_alias_start,
         activation_plan.transition_alias_page_count
+    )
+    .map_err(|_| ())?;
+    writeln!(
+        serial,
+        "direct-map window: 0x{:016x}-0x{:016x}",
+        rust_os::memory::KERNEL_DIRECT_MAP_BASE,
+        rust_os::memory::KERNEL_DIRECT_MAP_BASE + managed_phys_limit
     )
     .map_err(|_| ())
 }

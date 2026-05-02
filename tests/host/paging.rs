@@ -1,8 +1,8 @@
 use rust_os::{
     KERNEL_BOOT_PHYS_BASE,
     memory::{
-        AddressSpace, BitmapAllocator, EntryFlags, MappingRequest, MemoryRegion, RegionKind,
-        VirtualAddressLayout, map_range, unmap_range,
+        AddressSpace, BitmapAllocator, EntryFlags, KERNEL_DIRECT_MAP_BASE, MappingRequest,
+        MemoryRegion, RegionKind, VirtualAddressLayout, map_range, unmap_range,
     },
 };
 
@@ -29,7 +29,24 @@ fn paging_indices_match_x86_64_layout() {
 }
 
 #[test]
-fn kernel_template_maps_kernel_and_removes_transition_alias() {
+fn direct_map_translation_round_trips_within_managed_range() {
+    let managed_phys_limit = 0x20_0000;
+    let virt_addr =
+        VirtualAddressLayout::phys_to_direct_map_virt(0x0014_5000, managed_phys_limit)
+            .expect("physical address should fit the direct map");
+    assert_eq!(virt_addr, KERNEL_DIRECT_MAP_BASE + 0x0014_5000);
+    assert_eq!(
+        VirtualAddressLayout::direct_map_virt_to_phys(virt_addr, managed_phys_limit),
+        Some(0x0014_5000)
+    );
+    assert!(
+        VirtualAddressLayout::phys_to_direct_map_virt(managed_phys_limit, managed_phys_limit)
+            .is_none()
+    );
+}
+
+#[test]
+fn kernel_template_maps_kernel_direct_map_and_transition_alias() {
     let mut allocator = allocator_fixture();
     let (mut kernel, template) =
         AddressSpace::create_kernel_template(&mut allocator, KERNEL_BOOT_PHYS_BASE, 4)
@@ -44,6 +61,12 @@ fn kernel_template_maps_kernel_and_removes_transition_alias() {
         .translate(KERNEL_BOOT_PHYS_BASE)
         .expect("transition alias present");
     assert_eq!(alias.phys_addr, KERNEL_BOOT_PHYS_BASE);
+
+    let direct_map = kernel
+        .translate(KERNEL_DIRECT_MAP_BASE + 0x3000)
+        .expect("direct-map translation present");
+    assert_eq!(direct_map.phys_addr, 0x3000);
+    assert_eq!(template.managed_phys_limit, 0x200000);
 
     unmap_range(
         &mut kernel,
@@ -127,6 +150,13 @@ fn process_address_spaces_share_kernel_mapping_but_keep_private_mappings_isolate
         .translate(0xffff_8000_0000_0000)
         .expect("shared mapping");
     assert_eq!(kernel_page.phys_addr, process_page.phys_addr);
+    assert_eq!(
+        process_a
+            .translate(KERNEL_DIRECT_MAP_BASE + 0x5000)
+            .expect("process inherits direct map")
+            .phys_addr,
+        0x5000
+    );
 
     map_range(
         &mut process_a,

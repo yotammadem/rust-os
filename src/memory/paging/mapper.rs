@@ -1,7 +1,9 @@
 use crate::memory::{AllocationResult, BitmapAllocator, PAGE_SIZE, PageSpan, PhysAddr};
 
 use super::address_space::{AddressSpace, PagingAllocationRecord, TableOwner};
-use super::table::{EntryFlags, MappingRequest, PageTableLevel, VirtualAddressLayout};
+use super::table::{
+    EntryFlags, MappingRequest, PAGE_TABLE_ADDR_MASK, PageTableLevel, VirtualAddressLayout,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PagingError {
@@ -105,7 +107,7 @@ fn map_single_page(
                 .set(index, new_phys | EntryFlags::PRESENT.bits() | EntryFlags::WRITABLE.bits())?;
             new_phys
         } else {
-            entry & !0xfff
+            entry & PAGE_TABLE_ADDR_MASK
         };
         table_phys = child_phys;
         level = level.child().expect("non-leaf");
@@ -134,7 +136,7 @@ fn clear_single_page(address_space: &mut AddressSpace, virt_addr: u64) -> Result
         if entry == 0 {
             return Ok(());
         }
-        table_phys = entry & !0xfff;
+        table_phys = entry & PAGE_TABLE_ADDR_MASK;
     }
     address_space
         .find_table_mut(table_phys)

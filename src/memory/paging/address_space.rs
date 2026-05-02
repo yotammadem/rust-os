@@ -2,12 +2,13 @@ use crate::memory::{AllocationResult, BitmapAllocator, PAGE_SIZE, PageSpan, Phys
 
 use super::mapper::{PagingError, map_range};
 use super::table::{
-    EntryFlags, MappedPage, MappingRequest, PageTableLevel, VirtualAddressLayout, KERNEL_ALLOC_BASE,
-    KERNEL_ALLOC_LIMIT, KERNEL_VIRT_BASE, PROCESS_PRIVATE_LIMIT,
+    EntryFlags, MappedPage, MappingRequest, PAGE_TABLE_ENTRIES, PageTableLevel,
+    VirtualAddressLayout, KERNEL_ALLOC_BASE, KERNEL_ALLOC_LIMIT, KERNEL_DIRECT_MAP_BASE,
+    KERNEL_VIRT_BASE, PAGE_TABLE_ADDR_MASK, PROCESS_PRIVATE_LIMIT,
 };
 
-const MAX_TABLE_PAGES: usize = 32;
-const MAX_TRACKED_ENTRIES_PER_TABLE: usize = 64;
+const MAX_TABLE_PAGES: usize = 16;
+const MAX_TRACKED_ENTRIES_PER_TABLE: usize = PAGE_TABLE_ENTRIES;
 const MAX_OWNED_SPANS: usize = 64;
 const MAX_KERNEL_REGIONS: usize = 16;
 
@@ -85,22 +86,11 @@ impl PagingAllocationRecord {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SparseEntry {
-    index: usize,
-    value: u64,
-}
-
-impl SparseEntry {
-    const EMPTY: Self = Self { index: 0, value: 0 };
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TablePage {
     pub phys_addr: PhysAddr,
     pub level: PageTableLevel,
     owner: TableOwner,
-    entries: [SparseEntry; MAX_TRACKED_ENTRIES_PER_TABLE],
-    entry_count: usize,
+    entries: [u64; MAX_TRACKED_ENTRIES_PER_TABLE],
 }
 
 impl TablePage {
@@ -108,8 +98,7 @@ impl TablePage {
         phys_addr: 0,
         level: PageTableLevel::Pml4,
         owner: TableOwner::AddressSpace,
-        entries: [SparseEntry::EMPTY; MAX_TRACKED_ENTRIES_PER_TABLE],
-        entry_count: 0,
+        entries: [0; MAX_TRACKED_ENTRIES_PER_TABLE],
     };
 
     fn new(phys_addr: PhysAddr, level: PageTableLevel, owner: TableOwner) -> Self {
@@ -117,61 +106,38 @@ impl TablePage {
             phys_addr,
             level,
             owner,
-            entries: [SparseEntry::EMPTY; MAX_TRACKED_ENTRIES_PER_TABLE],
-            entry_count: 0,
+            entries: [0; MAX_TRACKED_ENTRIES_PER_TABLE],
         };
         table.zero_physical_page();
         table
     }
 
     pub(crate) fn get(&self, index: usize) -> u64 {
-        self.entries[..self.entry_count]
-            .iter()
-            .find(|entry| entry.index == index)
-            .map(|entry| entry.value)
-            .unwrap_or(0)
+        self.entries[index]
     }
 
     pub(crate) fn set(&mut self, index: usize, value: u64) -> Result<(), PagingError> {
-        if let Some(entry) = self.entries[..self.entry_count]
-            .iter_mut()
-            .find(|entry| entry.index == index)
-        {
-            entry.value = value;
-            self.write_physical_entry(index, value);
-            return Ok(());
-        }
-
-        if value == 0 {
-            return Ok(());
-        }
-        if self.entry_count >= self.entries.len() {
+        if index >= self.entries.len() {
             return Err(PagingError::CapacityExceeded);
         }
-        self.entries[self.entry_count] = SparseEntry { index, value };
-        self.entry_count += 1;
+        self.entries[index] = value;
         self.write_physical_entry(index, value);
         Ok(())
     }
 
     pub(crate) fn clear(&mut self, index: usize) {
-        if let Some(position) = self.entries[..self.entry_count]
-            .iter()
-            .position(|entry| entry.index == index)
-        {
-            self.entry_count -= 1;
-            self.entries[position] = self.entries[self.entry_count];
-            self.entries[self.entry_count] = SparseEntry::EMPTY;
+        if index < self.entries.len() {
+            self.entries[index] = 0;
         }
         self.write_physical_entry(index, 0);
     }
 
     fn zero_physical_page(&self) {
-        let _ = self;
+        zero_page_bytes(self.phys_addr);
     }
 
-    fn write_physical_entry(&self, _index: usize, _value: u64) {
-        let _ = self;
+    fn write_physical_entry(&self, index: usize, value: u64) {
+        write_entry_bytes(self.phys_addr, index, value);
     }
 }
 
@@ -188,6 +154,7 @@ pub struct KernelMappingTemplate {
     root_entry_count: usize,
     shared_tables: [TablePage; MAX_TABLE_PAGES],
     shared_table_count: usize,
+    pub managed_phys_limit: PhysAddr,
     pub transition_alias_start: u64,
     pub transition_alias_page_count: usize,
 }
@@ -199,6 +166,7 @@ impl KernelMappingTemplate {
             root_entry_count: 0,
             shared_tables: [TablePage::EMPTY; MAX_TABLE_PAGES],
             shared_table_count: 0,
+            managed_phys_limit: 0,
             transition_alias_start: 0,
             transition_alias_page_count: 0,
         }
@@ -218,6 +186,7 @@ pub struct AddressSpace {
     pub root_table_phys_addr: PhysAddr,
     pub root_table_virt_addr: u64,
     pub kind: AddressSpaceKind,
+    managed_phys_limit: PhysAddr,
     tables: [TablePage; MAX_TABLE_PAGES],
     table_count: usize,
     owned_table_pages: [Option<PageSpan>; MAX_OWNED_SPANS],
@@ -236,6 +205,7 @@ impl AddressSpace {
             root_table_phys_addr: root_span.start_phys_addr,
             root_table_virt_addr: root_span.start_phys_addr,
             kind: AddressSpaceKind::Kernel,
+            managed_phys_limit: 0,
             tables: [TablePage::EMPTY; MAX_TABLE_PAGES],
             table_count: 0,
             owned_table_pages: [None; MAX_OWNED_SPANS],
@@ -258,6 +228,14 @@ impl AddressSpace {
         kernel_page_count: usize,
     ) -> Result<(Self, KernelMappingTemplate), PagingError> {
         let mut kernel = Self::new_kernel(allocator)?;
+        kernel.managed_phys_limit = (allocator.managed_page_count() * PAGE_SIZE) as u64;
+        kernel.map_kernel_region(
+            allocator,
+            KERNEL_DIRECT_MAP_BASE,
+            0,
+            allocator.managed_page_count(),
+            EntryFlags::PRESENT | EntryFlags::WRITABLE | EntryFlags::GLOBAL | EntryFlags::NO_EXECUTE,
+        )?;
         kernel.map_kernel_region(
             allocator,
             KERNEL_VIRT_BASE,
@@ -275,6 +253,7 @@ impl AddressSpace {
         )?;
 
         let mut template = KernelMappingTemplate::empty();
+        template.managed_phys_limit = kernel.managed_phys_limit;
         let root = kernel.root_table();
         for entry in 0..512 {
             let value = root.get(entry);
@@ -306,6 +285,7 @@ impl AddressSpace {
             root_table_phys_addr: root_span.start_phys_addr,
             root_table_virt_addr: root_span.start_phys_addr,
             kind: AddressSpaceKind::Process,
+            managed_phys_limit: template.managed_phys_limit,
             tables: [TablePage::EMPTY; MAX_TABLE_PAGES],
             table_count: 0,
             owned_table_pages: [None; MAX_OWNED_SPANS],
@@ -442,7 +422,8 @@ impl AddressSpace {
                 return None;
             }
             if depth == 3 {
-                let phys = (entry & !0xfff) + VirtualAddressLayout::page_offset(virt_addr) as u64;
+                let phys =
+                    (entry & PAGE_TABLE_ADDR_MASK) + VirtualAddressLayout::page_offset(virt_addr) as u64;
                 return Some(MappedPage {
                     virt_addr,
                     phys_addr: phys,
@@ -521,6 +502,10 @@ impl AddressSpace {
             .flatten()
             .map(|region| (region.start, region.end, region.flags))
     }
+
+    pub fn managed_phys_limit(&self) -> PhysAddr {
+        self.managed_phys_limit
+    }
 }
 
 fn allocate_table_span(
@@ -533,3 +518,27 @@ fn allocate_table_span(
     record.push(span)?;
     Ok((span, record))
 }
+
+#[cfg(target_os = "uefi")]
+fn zero_page_bytes(phys_addr: PhysAddr) {
+    unsafe {
+        // Safety: boot-time paging pages are allocator-owned 4 KiB frames and are only
+        // initialized through this helper before or while publishing page-table entries.
+        core::ptr::write_bytes(phys_addr as *mut u8, 0, PAGE_SIZE);
+    }
+}
+
+#[cfg(not(target_os = "uefi"))]
+fn zero_page_bytes(_phys_addr: PhysAddr) {}
+
+#[cfg(target_os = "uefi")]
+fn write_entry_bytes(phys_addr: PhysAddr, index: usize, value: u64) {
+    unsafe {
+        // Safety: the caller bounds `index` to a page-table entry slot and only publishes
+        // aligned u64 entries into allocator-owned paging frames.
+        core::ptr::write_volatile((phys_addr as *mut u64).add(index), value);
+    }
+}
+
+#[cfg(not(target_os = "uefi"))]
+fn write_entry_bytes(_phys_addr: PhysAddr, _index: usize, _value: u64) {}

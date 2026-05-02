@@ -7,6 +7,7 @@ pub mod memory;
 
 pub const BOOT_ARTIFACT_PATH: &str = ".build/efi";
 pub const DEFAULT_OVMF_CODE: &str = "/usr/local/share/qemu/edk2-x86_64-code.fd";
+pub const DIRECT_MAP_SMOKE_PREFIX: &str = "direct-map smoke:";
 pub const HELLO_WORLD: &str = "hello world";
 pub const HELLO_WORLD_SERIAL: &str = "hello world\r\n";
 pub const KERNEL_BOOT_PHYS_BASE: u64 = 0x0010_0000;

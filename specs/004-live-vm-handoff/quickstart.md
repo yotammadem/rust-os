@@ -35,6 +35,10 @@ Expected result:
 
 - The EFI payload rebuilds successfully with the live handoff code linked in
 - QEMU boots through GRUB and reaches the kernel
+- The serial transcript includes a `paging root:` line before the first
+  post-switch success output
+- The serial transcript includes a `direct-map smoke:` line proving that a
+  physical page was reached through the direct-map window and released again
 - The kernel loads a kernel-owned CR3 root, continues at the higher-half
   continuation point, and prints `hello world` after the switch
 - The kernel allocates a physical page after the switch, reaches it through the
@@ -61,3 +65,12 @@ make build
 - If the direct-map smoke test cannot verify a write/read round-trip, the
   kernel treats the handoff as failed rather than continuing on an invalid
   memory-access path
+
+## Validation Notes
+
+- Verified on 2026-05-02: `cargo test`
+- Verified on 2026-05-02: `cargo check --target x86_64-unknown-uefi`
+- Verified on 2026-05-02: `make build`
+- `./run.sh` still needs follow-up in this environment: the current QEMU
+  transcript reached GRUB and repeatedly attempted to boot `hello-boot`
+  without emitting kernel serial output before the process was terminated

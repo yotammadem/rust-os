@@ -1,9 +1,14 @@
 target/
 .build/
+debug/
+release/
 bin/*
 !bin/.gitkeep
 .DS_Store
 *.log
+*.prof*
+*.tmp
+*.swp
 .env*
 .idea/
 .vscode/

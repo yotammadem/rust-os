@@ -23,10 +23,10 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 **Purpose**: Establish the live handoff feature boundaries, shared constants, and validation scaffolding for the new spec
 
-- [ ] T001 Define the live higher-half, direct-map, and temporary low-alias range constants in `src/memory/paging/table.rs`
-- [ ] T002 [P] Export the new runtime paging constants and translation helpers from `src/memory/paging/mod.rs` and `src/memory/mod.rs`
-- [ ] T003 [P] Update the QEMU transcript expectations for post-switch proof in `tests/e2e_boot_serial.py` and `tests/host/run_contract.rs`
-- [ ] T004 Record the live handoff validation commands and expected transcript markers in `specs/004-live-vm-handoff/quickstart.md`
+- [X] T001 Define the live higher-half, direct-map, and temporary low-alias range constants in `src/memory/paging/table.rs`
+- [X] T002 [P] Export the new runtime paging constants and translation helpers from `src/memory/paging/mod.rs` and `src/memory/mod.rs`
+- [X] T003 [P] Update the QEMU transcript expectations for post-switch proof in `tests/e2e_boot_serial.py` and `tests/host/run_contract.rs`
+- [X] T004 Record the live handoff validation commands and expected transcript markers in `specs/004-live-vm-handoff/quickstart.md`
 
 ---
 
@@ -37,10 +37,10 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
 - [ ] T005 Replace placeholder table storage with direct-map-backed page-table page access primitives in `src/memory/paging/table.rs`
-- [ ] T006 [P] Update paging-page allocation, zeroing, and rollback publication paths in `src/memory/paging/address_space.rs` and `src/memory/paging/mapper.rs`
-- [ ] T007 [P] Add host tests for direct-map translation helpers, paging-page initialization, and rollback behavior in `tests/host/paging.rs`
-- [ ] T008 Define the bootstrap alias coverage and higher-half continuation inputs needed for the root switch in `src/arch/x86_64/paging.rs` and `src/main.rs`
-- [ ] T009 Document the contained `unsafe` invariants for direct-map access, page-table entry writes, and CR3 activation in `specs/004-live-vm-handoff/contracts/runtime-paging-interface.md` and `specs/004-live-vm-handoff/plan.md`
+- [X] T006 [P] Update paging-page allocation, zeroing, and rollback publication paths in `src/memory/paging/address_space.rs` and `src/memory/paging/mapper.rs`
+- [X] T007 [P] Add host tests for direct-map translation helpers, paging-page initialization, and rollback behavior in `tests/host/paging.rs`
+- [X] T008 Define the bootstrap alias coverage and higher-half continuation inputs needed for the root switch in `src/arch/x86_64/paging.rs` and `src/main.rs`
+- [X] T009 Document the contained `unsafe` invariants for direct-map access, page-table entry writes, and CR3 activation in `specs/004-live-vm-handoff/contracts/runtime-paging-interface.md` and `specs/004-live-vm-handoff/plan.md`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -54,15 +54,15 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 ### Validation for User Story 1 ⚠️
 
-- [ ] T010 [P] [US1] Add host tests for bootstrap alias construction, continuation reachability, and low-alias removal rules in `tests/host/paging.rs`
-- [ ] T011 [US1] Update the boot transcript validation for post-switch `hello world` proof in `tests/e2e_boot_serial.py` and `specs/004-live-vm-handoff/quickstart.md`
+- [X] T010 [P] [US1] Add host tests for bootstrap alias construction, continuation reachability, and low-alias removal rules in `tests/host/paging.rs`
+- [X] T011 [US1] Update the boot transcript validation for post-switch `hello world` proof in `tests/e2e_boot_serial.py` and `specs/004-live-vm-handoff/quickstart.md`
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Build the live kernel runtime root with higher-half image mappings and temporary low bootstrap aliases in `src/memory/paging/address_space.rs`
-- [ ] T013 [P] [US1] Publish real allocator-backed page-table entries for the runtime root in `src/memory/paging/mapper.rs`
+- [X] T012 [P] [US1] Build the live kernel runtime root with higher-half image mappings and temporary low bootstrap aliases in `src/memory/paging/address_space.rs`
+- [X] T013 [P] [US1] Publish real allocator-backed page-table entries for the runtime root in `src/memory/paging/mapper.rs`
 - [ ] T014 [US1] Implement CR3 loading and the higher-half continuation handoff path in `src/arch/x86_64/paging.rs`
-- [ ] T015 [US1] Replace the diagnostic-only boot path with the live root switch and post-switch `hello world` output in `src/main.rs`
+- [X] T015 [US1] Replace the diagnostic-only boot path with the live root switch and post-switch `hello world` output in `src/main.rs`
 - [ ] T016 [US1] Remove the temporary low bootstrap alias after successful continuation in `src/memory/paging/address_space.rs`, `src/arch/x86_64/paging.rs`, and `src/main.rs`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
@@ -77,16 +77,16 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 ### Validation for User Story 2 ⚠️
 
-- [ ] T017 [P] [US2] Add host tests for direct-map physical/virtual round-trip translation and direct-map-backed page initialization in `tests/host/paging.rs`
-- [ ] T018 [US2] Extend boot validation expectations for the post-switch direct-map smoke test in `tests/e2e_boot_serial.py` and `specs/004-live-vm-handoff/quickstart.md`
+- [X] T017 [P] [US2] Add host tests for direct-map physical/virtual round-trip translation and direct-map-backed page initialization in `tests/host/paging.rs`
+- [X] T018 [US2] Extend boot validation expectations for the post-switch direct-map smoke test in `tests/e2e_boot_serial.py` and `specs/004-live-vm-handoff/quickstart.md`
 
 ### Implementation for User Story 2
 
-- [ ] T019 [P] [US2] Implement the direct-map address translation helpers and range validation in `src/memory/paging/table.rs` and `src/memory/paging/mod.rs`
+- [X] T019 [P] [US2] Implement the direct-map address translation helpers and range validation in `src/memory/paging/table.rs` and `src/memory/paging/mod.rs`
 - [ ] T020 [P] [US2] Update allocator-backed paging-page and kernel-page initialization to use the active direct-map window in `src/memory/paging/address_space.rs` and `src/memory/paging/mapper.rs`
-- [ ] T021 [US2] Add the post-switch direct-map smoke test flow in `src/main.rs`
+- [X] T021 [US2] Add the post-switch direct-map smoke test flow in `src/main.rs`
 - [ ] T022 [US2] Preserve rollback and reclaim correctness for direct-map-backed paging/data pages in `src/memory/paging/address_space.rs` and `src/memory/paging/mapper.rs`
-- [ ] T023 [US2] Record the finalized direct-map behavior and failure contract in `specs/004-live-vm-handoff/contracts/runtime-paging-interface.md`
+- [X] T023 [US2] Record the finalized direct-map behavior and failure contract in `specs/004-live-vm-handoff/contracts/runtime-paging-interface.md`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -100,15 +100,15 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 ### Validation for User Story 3 ⚠️
 
-- [ ] T024 [P] [US3] Add host tests for process-root creation from the live kernel template, shared direct-map inheritance, and destroy-time reclamation in `tests/host/paging.rs`
+- [X] T024 [P] [US3] Add host tests for process-root creation from the live kernel template, shared direct-map inheritance, and destroy-time reclamation in `tests/host/paging.rs`
 - [ ] T025 [US3] Extend the reproducible validation notes for process address-space scenarios built from the live kernel template in `specs/004-live-vm-handoff/quickstart.md`
 
 ### Implementation for User Story 3
 
-- [ ] T026 [P] [US3] Update process-root creation to clone the live kernel higher-half and direct-map template in `src/memory/paging/address_space.rs`
+- [X] T026 [P] [US3] Update process-root creation to clone the live kernel higher-half and direct-map template in `src/memory/paging/address_space.rs`
 - [ ] T027 [P] [US3] Update process-private mapping growth and conflict handling for the live page-table representation in `src/memory/paging/mapper.rs`
-- [ ] T028 [US3] Verify destroy/reclaim behavior preserves shared runtime mappings while releasing private pages in `src/memory/paging/address_space.rs`
-- [ ] T029 [US3] Export revised process address-space creation, translation, and destroy helpers in `src/memory/paging/mod.rs` and `src/memory/mod.rs`
+- [X] T028 [US3] Verify destroy/reclaim behavior preserves shared runtime mappings while releasing private pages in `src/memory/paging/address_space.rs`
+- [X] T029 [US3] Export revised process address-space creation, translation, and destroy helpers in `src/memory/paging/mod.rs` and `src/memory/mod.rs`
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -118,9 +118,9 @@ when practical, and boot or emulator validation tasks are mandatory for kernel-c
 
 **Purpose**: Final consistency, safety cleanup, and end-to-end proof across all stories
 
-- [ ] T030 [P] Finalize transcript and host contract checks for post-switch serial output and direct-map smoke behavior in `tests/e2e_boot_serial.py` and `tests/host/run_contract.rs`
-- [ ] T031 [P] Reduce or document any remaining `unsafe` and architecture touchpoints in `src/memory/paging/table.rs`, `src/memory/paging/address_space.rs`, `src/memory/paging/mapper.rs`, and `src/arch/x86_64/paging.rs`
-- [ ] T032 Update the implementation narrative and file references in `specs/004-live-vm-handoff/plan.md` and `specs/004-live-vm-handoff/contracts/runtime-paging-interface.md`
+- [X] T030 [P] Finalize transcript and host contract checks for post-switch serial output and direct-map smoke behavior in `tests/e2e_boot_serial.py` and `tests/host/run_contract.rs`
+- [X] T031 [P] Reduce or document any remaining `unsafe` and architecture touchpoints in `src/memory/paging/table.rs`, `src/memory/paging/address_space.rs`, `src/memory/paging/mapper.rs`, and `src/arch/x86_64/paging.rs`
+- [X] T032 Update the implementation narrative and file references in `specs/004-live-vm-handoff/plan.md` and `specs/004-live-vm-handoff/contracts/runtime-paging-interface.md`
 - [ ] T033 Run the full validation flow and record verified results in `specs/004-live-vm-handoff/quickstart.md`
 
 ---

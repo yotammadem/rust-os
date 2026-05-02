@@ -108,6 +108,18 @@ translation helpers, ownership tracking, and page-table publication logic in
 validation live in `src/main.rs`, and transcript-based proof remains in
 `tests/e2e_boot_serial.py`.
 
+## Implementation Notes
+
+- The runtime root now installs a shared direct-map window at
+  `KERNEL_DIRECT_MAP_BASE` and records the allocator-managed physical limit in
+  the cloned kernel template used for process address spaces.
+- Host-side validation now asserts direct-map round trips, inherited direct-map
+  visibility in process roots, rollback stability, and the stable transcript
+  markers `paging root:` and `direct-map smoke:`.
+- `unsafe` remains concentrated in three places: paging-frame writes in
+  `src/memory/paging/address_space.rs`, CR3 activation in
+  `src/arch/x86_64/paging.rs`, and direct-map smoke access in `src/main.rs`.
+
 ## Complexity Tracking
 
 No constitution violations are expected. The main implementation complexity is a
