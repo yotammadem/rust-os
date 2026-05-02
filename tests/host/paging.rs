@@ -2,11 +2,14 @@ use rust_os::{
     KERNEL_BOOT_PHYS_BASE,
     memory::{
         AddressSpace, BitmapAllocator, EntryFlags, KERNEL_DIRECT_MAP_BASE, MappingRequest,
-        MemoryRegion, RegionKind, VirtualAddressLayout, map_range, unmap_range,
+        MemoryRegion, RegionKind, VirtualAddressLayout, map_range,
+        reset_host_shadow_page_tables_for_tests, unmap_range,
     },
 };
 
 fn allocator_fixture() -> BitmapAllocator<'static> {
+    reset_host_shadow_page_tables_for_tests();
+
     let regions = [
         MemoryRegion::from_aligned_range(0x0000, 0x1000, RegionKind::Reserved),
         MemoryRegion::from_aligned_range(0x1000, 0x200000, RegionKind::Usable),
@@ -93,7 +96,6 @@ fn map_range_rolls_back_intermediate_allocations_on_conflict() {
             flags: EntryFlags::WRITABLE,
             allow_overwrite: false,
         },
-        rust_os::memory::AddressSpaceKind::Kernel.into(),
     )
     .expect("initial mapping should work");
 
@@ -108,7 +110,6 @@ fn map_range_rolls_back_intermediate_allocations_on_conflict() {
             flags: EntryFlags::WRITABLE,
             allow_overwrite: false,
         },
-        rust_os::memory::AddressSpaceKind::Kernel.into(),
     )
     .expect_err("overlap should fail");
     assert_eq!(err, rust_os::memory::PagingError::MappingConflict);
@@ -168,7 +169,6 @@ fn process_address_spaces_share_kernel_mapping_but_keep_private_mappings_isolate
             flags: EntryFlags::WRITABLE | EntryFlags::USER,
             allow_overwrite: false,
         },
-        rust_os::memory::AddressSpaceKind::Process.into(),
     )
     .expect("private mapping should succeed");
 
@@ -196,7 +196,6 @@ fn destroy_reclaims_process_private_paging_pages() {
             flags: EntryFlags::WRITABLE | EntryFlags::USER,
             allow_overwrite: false,
         },
-        rust_os::memory::AddressSpaceKind::Process.into(),
     )
     .expect("mapping should succeed");
     let after_mapping = allocator.free_page_count();

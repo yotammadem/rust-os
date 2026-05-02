@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(not(target_os = "uefi"))]
+extern crate std;
+
 pub mod arch;
 pub mod boot;
 pub mod kernel;

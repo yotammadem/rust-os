@@ -13,3 +13,5 @@ pub use paging::{
     KERNEL_VIRT_BASE, PAGE_TABLE_ADDR_MASK, PAGE_TABLE_ENTRIES, PageTableLevel,
     PagingAllocationRecord, PagingError, VirtualAddressLayout, map_range, unmap_range,
 };
+#[cfg(not(target_os = "uefi"))]
+pub use paging::reset_host_shadow_page_tables_for_tests;

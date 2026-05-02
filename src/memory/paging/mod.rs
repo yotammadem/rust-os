@@ -6,6 +6,8 @@ pub use address_space::{
     AddressSpace, AddressSpaceKind, KernelMappingTemplate, KernelVirtualAllocation,
     PagingAllocationRecord,
 };
+#[cfg(not(target_os = "uefi"))]
+pub use address_space::reset_host_shadow_page_tables_for_tests;
 pub use mapper::{map_range, unmap_range, PagingError};
 pub use table::{
     EntryFlags, MappingRequest, MappedPage, PAGE_TABLE_ADDR_MASK, PageTableLevel,
