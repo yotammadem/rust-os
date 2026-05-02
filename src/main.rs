@@ -38,6 +38,15 @@ static mut RAW_MEMORY_MAP_STORAGE: [u8; UEFI_MEMORY_MAP_STORAGE_BYTES] =
 #[cfg(target_os = "uefi")]
 static mut REGION_STORAGE: [MemoryRegion; MAX_MEMORY_REGIONS] = [MemoryRegion::EMPTY; MAX_MEMORY_REGIONS];
 
+#[cfg(target_os = "uefi")]
+#[repr(C)]
+struct HigherHalfContinuationContext {
+    debugcon: *mut DebugCon,
+    serial: *mut SerialPort,
+    allocator: *mut (),
+    managed_phys_limit: u64,
+}
+
 #[cfg(not(target_os = "uefi"))]
 fn main() {}
 
@@ -150,8 +159,17 @@ pub extern "efiapi" fn efi_main(
         }
     }
 
+    let higher_half_entry_addr = match higher_half_entry_addr(code_window_start) {
+        Some(addr) => addr,
+        None => {
+            let _ = print_boot_error_debugcon(&mut debugcon, "higher-half-entry");
+            let _ = print_boot_error(&mut serial, "higher-half-entry");
+            return EFI_ABORTED;
+        }
+    };
+
     let activation_plan =
-        ActivationPlan::from_template(kernel_space.root_table_phys_addr, KERNEL_VIRT_BASE, &template);
+        ActivationPlan::from_template(kernel_space.root_table_phys_addr, higher_half_entry_addr, &template);
     let _ = print_boot_marker_debugcon(&mut debugcon, "6 activation-plan");
     let _ = print_boot_marker(&mut serial, "6 activation-plan");
 
@@ -165,29 +183,62 @@ pub extern "efiapi" fn efi_main(
     let _ = print_boot_marker_debugcon(&mut debugcon, "7 pre-activate");
     let _ = print_boot_marker(&mut serial, "7 pre-activate");
 
-    unsafe { rust_os::arch::x86_64::paging::activate(activation_plan) };
-    let _ = print_boot_marker_debugcon(&mut debugcon, "8 post-activate");
-    let _ = print_boot_marker(&mut serial, "8 post-activate");
+    let mut continuation = HigherHalfContinuationContext {
+        debugcon: &mut debugcon,
+        serial: &mut serial,
+        allocator: (&mut allocator as *mut BitmapAllocator<'_>).cast::<()>(),
+        managed_phys_limit: kernel_space.managed_phys_limit(),
+    };
 
-    if smoke_test_direct_map_page(&mut serial, &mut allocator, kernel_space.managed_phys_limit())
-        .is_err()
-    {
-        let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke");
-        let _ = print_boot_error(&mut serial, "direct-map-smoke");
-        return EFI_ABORTED;
+    unsafe {
+        rust_os::arch::x86_64::paging::activate(
+            activation_plan,
+            (&mut continuation as *mut HigherHalfContinuationContext).cast::<()>(),
+        )
+    };
+}
+
+#[cfg(target_os = "uefi")]
+fn higher_half_entry_addr(code_window_start: u64) -> Option<u64> {
+    let continuation_addr = higher_half_continuation as *const () as usize as u64;
+    let code_window_size = (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64;
+    let code_window_end = code_window_start.checked_add(code_window_size)?;
+
+    if continuation_addr < code_window_start || continuation_addr >= code_window_end {
+        return None;
     }
-    let _ = print_boot_marker_debugcon(&mut debugcon, "9 post-direct-map-smoke");
-    let _ = print_boot_marker(&mut serial, "9 post-direct-map-smoke");
 
-    match hello::render(&mut serial) {
+    KERNEL_VIRT_BASE.checked_add(continuation_addr - code_window_start)
+}
+
+#[cfg(target_os = "uefi")]
+unsafe extern "C" fn higher_half_continuation(context: *mut HigherHalfContinuationContext) -> ! {
+    let context = unsafe { &mut *context };
+    let debugcon = unsafe { &mut *context.debugcon };
+    let serial = unsafe { &mut *context.serial };
+    let allocator = unsafe { &mut *context.allocator.cast::<BitmapAllocator<'static>>() };
+
+    let _ = print_boot_marker_debugcon(debugcon, "8 post-activate");
+    let _ = print_boot_marker(serial, "8 post-activate");
+    let _ = writeln!(serial, "higher-half rip: 0x{:016x}", current_instruction_pointer());
+
+    if smoke_test_direct_map_page(serial, allocator, context.managed_phys_limit).is_err() {
+        let _ = print_boot_error_debugcon(debugcon, "direct-map-smoke");
+        let _ = print_boot_error(serial, "direct-map-smoke");
+        halt::halt_forever();
+    }
+    let _ = print_boot_marker_debugcon(debugcon, "9 post-direct-map-smoke");
+    let _ = print_boot_marker(serial, "9 post-direct-map-smoke");
+
+    match hello::render(serial) {
         Ok(()) => {
-            let _ = print_boot_marker_debugcon(&mut debugcon, "10 hello-rendered");
-            let _ = print_boot_marker(&mut serial, "10 hello-rendered");
+            let _ = print_boot_marker_debugcon(debugcon, "10 hello-rendered");
+            let _ = print_boot_marker(serial, "10 hello-rendered");
         }
         Err(_) => {
-            let _ = print_boot_error_debugcon(&mut debugcon, "hello-render");
-            let _ = print_boot_error(&mut serial, "hello-render");
-            return EFI_ABORTED;
+            let _ = print_boot_error_debugcon(debugcon, "hello-render");
+            let _ = print_boot_error(serial, "hello-render");
+            halt::halt_forever();
         }
     }
 
