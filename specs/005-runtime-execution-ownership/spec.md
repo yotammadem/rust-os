@@ -8,6 +8,15 @@
 3. bring up kernel-owned GDT/IDT/TSS
 4. replace the cli/hlt stopgap with proper interrupt-safe idle behavior"
 
+## Clarifications
+
+### Session 2026-05-02
+
+- Q: What runtime event must prove the kernel owns post-handoff idle wakeups? → A: A kernel-handled hardware timer interrupt
+- Q: What minimum handler coverage proves kernel-owned execution context in this feature? → A: Hardware timer interrupt plus one deliberate synchronous exception path
+- Q: When should the temporary low/current execution alias be removed? → A: Immediately after the first confirmed higher-half continuation step
+- Q: Which synchronous exception path should prove kernel-owned exception handling? → A: A deliberate breakpoint exception
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Continue In The Higher Half (Priority: P1)
@@ -21,7 +30,7 @@ As a kernel developer, I want the kernel to resume execution at a stable higher-
 **Acceptance Scenarios**:
 
 1. **Given** the kernel has built a runtime paging root, **When** it activates that root, **Then** execution continues from a known higher-half continuation point instead of relying on the current low execution window.
-2. **Given** the higher-half continuation path is active, **When** the kernel removes the temporary low execution alias, **Then** the system continues running and still emits the expected post-switch serial output.
+2. **Given** the first higher-half continuation step has been confirmed, **When** the kernel immediately removes the temporary low execution alias, **Then** the system continues running and still emits the expected post-switch serial output.
 
 ---
 
@@ -36,7 +45,7 @@ As a kernel developer, I want the runtime kernel to own the execution context us
 **Acceptance Scenarios**:
 
 1. **Given** the runtime root is active, **When** the kernel transitions into its owned execution context, **Then** the processor uses kernel-provided descriptor and interrupt state for subsequent runtime handling.
-2. **Given** the kernel-owned execution context is installed, **When** a post-switch runtime event requires stack or handler state, **Then** the processor reaches the intended kernel-managed path without falling back to firmware-owned state.
+2. **Given** the kernel-owned execution context is installed, **When** a hardware timer interrupt arrives or the kernel deliberately triggers a synchronous exception path, **Then** the processor reaches the intended kernel-managed path without falling back to firmware-owned state.
 
 ---
 
@@ -51,7 +60,7 @@ As a kernel developer, I want the post-boot kernel to enter an interrupt-safe id
 **Acceptance Scenarios**:
 
 1. **Given** the kernel has completed the runtime handoff and installed kernel-owned execution context state, **When** it enters its idle path, **Then** the system remains stable without requiring a firmware-era interrupt-disable stopgap.
-2. **Given** the system is idling under kernel control, **When** expected timer or interrupt activity occurs, **Then** the kernel remains in a recoverable runtime state rather than resetting or rebooting.
+2. **Given** the system is idling under kernel control, **When** a hardware timer interrupt arrives, **Then** the processor wakes through a kernel-owned handler path and the system remains in a recoverable runtime state rather than resetting or rebooting.
 
 ### Edge Cases
 
@@ -67,11 +76,15 @@ As a kernel developer, I want the post-boot kernel to enter an interrupt-safe id
 - **FR-001**: The system MUST resume execution at a deterministic higher-half continuation point immediately after activating the runtime paging root.
 - **FR-002**: The system MUST preserve the code, stack, and immediate runtime data needed to survive the paging-root switch until the higher-half continuation path is active.
 - **FR-003**: The system MUST remove the temporary low/current execution alias after higher-half execution is established successfully.
+- **FR-013**: The system MUST remove the temporary low/current execution alias immediately after the first confirmed higher-half continuation step and MUST NOT retain it for later execution-context or idle milestones.
 - **FR-004**: The system MUST reject or abort the handoff if the higher-half continuation point, required stack state, or immediate runtime data would become unreachable during the transition.
 - **FR-005**: The runtime kernel MUST install and use kernel-owned execution-context state for post-switch runtime handling instead of relying on inherited firmware-owned state.
 - **FR-006**: The system MUST ensure that post-switch interrupt, exception, and privileged runtime handling reaches kernel-owned control paths once that execution-context ownership step is complete.
+- **FR-012**: Validation of kernel-owned execution-context installation MUST include both a hardware timer interrupt path and at least one deliberate synchronous exception path handled under kernel-owned state.
+- **FR-014**: The required deliberate synchronous exception proof path for this feature MUST be a kernel-triggered breakpoint exception handled under kernel-owned execution state.
 - **FR-007**: The post-boot kernel MUST provide an idle behavior that remains stable without depending on a blanket interrupt-disable workaround as its long-term runtime behavior.
 - **FR-008**: The system MUST remain under kernel control after entering idle and MUST NOT reset or reboot as a result of expected post-boot runtime events.
+- **FR-011**: The stable idle behavior MUST be an interrupt-driven path that executes with interrupts enabled and resumes through a kernel-owned hardware timer interrupt handler.
 - **FR-009**: The system MUST continue to provide observable serial transcript proof after the paging handoff, after low-alias removal, and after entering the post-boot idle state.
 - **FR-010**: Failed continuation setup, alias removal, execution-context installation, or idle-state entry MUST fail in a bounded way without silently falling back to firmware-owned runtime behavior.
 
@@ -95,9 +108,12 @@ As a kernel developer, I want the post-boot kernel to enter an interrupt-safe id
 ### Measurable Outcomes
 
 - **SC-001**: In repeated QEMU boots, the kernel reaches the higher-half continuation path and emits the expected post-switch serial transcript without depending on the preserved current low execution window.
-- **SC-002**: In repeated QEMU boots, removing the temporary low/current execution alias does not prevent the kernel from continuing to run and emit the expected post-removal transcript markers.
+- **SC-002**: In repeated QEMU boots, removing the temporary low/current execution alias immediately after the first confirmed higher-half continuation step does not prevent the kernel from continuing to run and emit the expected post-removal transcript markers.
 - **SC-003**: In repeated validation runs, the system remains under kernel-owned execution control after the runtime handoff and does not fall back to firmware-owned runtime handling.
-- **SC-004**: After entering the post-boot idle path, the system remains stable without rebooting or resetting during the validation window.
+- **SC-006**: In repeated QEMU validation runs, both a hardware timer interrupt and at least one deliberate synchronous exception complete through kernel-owned handlers after the runtime handoff.
+- **SC-007**: In repeated QEMU validation runs, a deliberate breakpoint exception completes through a kernel-owned handler after the runtime handoff.
+- **SC-004**: After entering the post-boot idle path, the system remains stable without rebooting or resetting during the validation window while using an interrupt-enabled `hlt` wakeup path.
+- **SC-005**: In repeated QEMU validation runs, a hardware timer interrupt wakes the idle kernel through a kernel-owned handler path after the runtime handoff.
 
 ## Assumptions
 
