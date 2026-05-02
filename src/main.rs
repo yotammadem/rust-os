@@ -15,6 +15,7 @@ use rust_os::{
     },
     boot::uefi::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot},
     kernel::hello,
+    memory::paging::KERNEL_ALLOC_BASE,
     memory::{
         AllocationResult, BitmapAllocator, EntryFlags, KERNEL_VIRT_BASE, MAX_MEMORY_REGIONS,
         MemoryRegion, PAGE_SIZE, PageSpan, RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES,
@@ -46,6 +47,9 @@ struct HigherHalfContinuationContext {
     allocator: *mut (),
     managed_phys_limit: u64,
 }
+
+#[cfg(target_os = "uefi")]
+const CONTINUATION_STACK_ALIAS_BASE: u64 = KERNEL_ALLOC_BASE;
 
 #[cfg(not(target_os = "uefi"))]
 fn main() {}
@@ -159,6 +163,21 @@ pub extern "efiapi" fn efi_main(
         }
     }
 
+    if kernel_space
+        .map_kernel_region(
+            &mut allocator,
+            CONTINUATION_STACK_ALIAS_BASE,
+            stack_window_start,
+            ACTIVE_STACK_WINDOW_PAGE_COUNT,
+            EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
+        )
+        .is_err()
+    {
+        let _ = print_boot_error_debugcon(&mut debugcon, "stack-high-alias");
+        let _ = print_boot_error(&mut serial, "stack-high-alias");
+        return EFI_ABORTED;
+    }
+
     let higher_half_entry_addr = match higher_half_entry_addr(code_window_start) {
         Some(addr) => addr,
         None => {
@@ -168,8 +187,41 @@ pub extern "efiapi" fn efi_main(
         }
     };
 
-    let activation_plan =
-        ActivationPlan::from_template(kernel_space.root_table_phys_addr, higher_half_entry_addr, &template);
+    let mut continuation = HigherHalfContinuationContext {
+        debugcon: &mut debugcon,
+        serial: &mut serial,
+        allocator: (&mut allocator as *mut BitmapAllocator<'_>).cast::<()>(),
+        managed_phys_limit: kernel_space.managed_phys_limit(),
+    };
+
+    let higher_half_stack_pointer =
+        match remap_window_address(current_stack, stack_window_start, CONTINUATION_STACK_ALIAS_BASE) {
+            Some(addr) => addr,
+            None => {
+                let _ = print_boot_error_debugcon(&mut debugcon, "stack-high-pointer");
+                let _ = print_boot_error(&mut serial, "stack-high-pointer");
+                return EFI_ABORTED;
+            }
+        };
+    let continuation_context_addr = match remap_window_address(
+        (&mut continuation as *mut HigherHalfContinuationContext) as u64,
+        stack_window_start,
+        CONTINUATION_STACK_ALIAS_BASE,
+    ) {
+        Some(addr) => addr as *mut HigherHalfContinuationContext,
+        None => {
+            let _ = print_boot_error_debugcon(&mut debugcon, "context-high-pointer");
+            let _ = print_boot_error(&mut serial, "context-high-pointer");
+            return EFI_ABORTED;
+        }
+    };
+
+    let activation_plan = ActivationPlan::from_template(
+        kernel_space.root_table_phys_addr,
+        higher_half_entry_addr,
+        higher_half_stack_pointer,
+        &template,
+    );
     let _ = print_boot_marker_debugcon(&mut debugcon, "6 activation-plan");
     let _ = print_boot_marker(&mut serial, "6 activation-plan");
 
@@ -183,19 +235,7 @@ pub extern "efiapi" fn efi_main(
     let _ = print_boot_marker_debugcon(&mut debugcon, "7 pre-activate");
     let _ = print_boot_marker(&mut serial, "7 pre-activate");
 
-    let mut continuation = HigherHalfContinuationContext {
-        debugcon: &mut debugcon,
-        serial: &mut serial,
-        allocator: (&mut allocator as *mut BitmapAllocator<'_>).cast::<()>(),
-        managed_phys_limit: kernel_space.managed_phys_limit(),
-    };
-
-    unsafe {
-        rust_os::arch::x86_64::paging::activate(
-            activation_plan,
-            (&mut continuation as *mut HigherHalfContinuationContext).cast::<()>(),
-        )
-    };
+    unsafe { rust_os::arch::x86_64::paging::activate(activation_plan, continuation_context_addr.cast::<()>()) };
 }
 
 #[cfg(target_os = "uefi")]
@@ -209,6 +249,18 @@ fn higher_half_entry_addr(code_window_start: u64) -> Option<u64> {
     }
 
     KERNEL_VIRT_BASE.checked_add(continuation_addr - code_window_start)
+}
+
+#[cfg(target_os = "uefi")]
+fn remap_window_address(addr: u64, low_window_start: u64, high_window_start: u64) -> Option<u64> {
+    let window_size = (ACTIVE_STACK_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64;
+    let low_window_end = low_window_start.checked_add(window_size)?;
+
+    if addr < low_window_start || addr >= low_window_end {
+        return None;
+    }
+
+    high_window_start.checked_add(addr - low_window_start)
 }
 
 #[cfg(target_os = "uefi")]

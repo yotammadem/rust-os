@@ -4,15 +4,22 @@ use crate::memory::paging::KernelMappingTemplate;
 pub struct ActivationPlan {
     pub root_table_phys_addr: u64,
     pub higher_half_entry_addr: u64,
+    pub higher_half_stack_pointer: u64,
     pub transition_alias_start: u64,
     pub transition_alias_page_count: usize,
 }
 
 impl ActivationPlan {
-    pub fn from_template(root_table_phys_addr: u64, higher_half_entry_addr: u64, template: &KernelMappingTemplate) -> Self {
+    pub fn from_template(
+        root_table_phys_addr: u64,
+        higher_half_entry_addr: u64,
+        higher_half_stack_pointer: u64,
+        template: &KernelMappingTemplate,
+    ) -> Self {
         Self {
             root_table_phys_addr,
             higher_half_entry_addr,
+            higher_half_stack_pointer,
             transition_alias_start: template.transition_alias_start,
             transition_alias_page_count: template.transition_alias_page_count,
         }
@@ -33,12 +40,14 @@ pub unsafe fn activate(plan: ActivationPlan, context: *mut ()) -> ! {
         core::arch::asm!(
             "cli", // Disable interrupts during the transition
             "mov cr3, {root}", // Install the runtime page-table root
+            "mov rsp, {stack}", // Switch to the higher-half stack alias before calling Rust code
             "sub rsp, 40", // Reserve the required Win64 shadow space
             "mov rax, {entry}", // Stage the continuation target
             "mov rcx, {context}", // Stage the first argument for the continuation
             "call rax", // Transfer control into the higher-half continuation
             "ud2", // The continuation is not expected to return
             root = in(reg) plan.root_table_phys_addr,
+            stack = in(reg) plan.higher_half_stack_pointer,
             context = in(reg) context,
             entry = in(reg) plan.higher_half_entry_addr,
             options(noreturn)
