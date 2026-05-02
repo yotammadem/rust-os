@@ -4,6 +4,11 @@ use crate::memory::map::{
     AllocationResult, BootMemoryMapSnapshot, MemoryRegion, PAGE_SIZE, PageSpan, RegionKind,
 };
 
+pub const BOOTSTRAP_BITMAP_STORAGE_BYTES: usize = 1024 * 1024;
+
+static mut BOOTSTRAP_BITMAP_STORAGE: [u8; BOOTSTRAP_BITMAP_STORAGE_BYTES] =
+    [0; BOOTSTRAP_BITMAP_STORAGE_BYTES];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InitError {
     EmptyMemoryMap,
@@ -229,14 +234,22 @@ impl BitmapAllocator<'static> {
         }
 
         validate_regions(snapshot.regions)?;
+        let required_storage_bytes =
+            Self::required_storage_bytes_for_managed_pages(managed_page_count);
+        if required_storage_bytes > BOOTSTRAP_BITMAP_STORAGE_BYTES {
+            return Err(InitError::StorageTooSmall);
+        }
         let metadata_pages = Self::metadata_page_count_for_managed_pages(managed_page_count);
         let metadata_span = select_metadata_span(snapshot.regions, metadata_pages)
             .ok_or(InitError::MetadataPlacementFailed)?;
-        let storage_len = metadata_pages * PAGE_SIZE;
         let storage = unsafe {
-            // Safety: metadata_span points at allocator-reserved physical pages selected from a
-            // usable region. This is the only place that aliases that memory as raw bitmap storage.
-            slice::from_raw_parts_mut(metadata_span.start_phys_addr as *mut u8, storage_len)
+            // Safety: early boot is single-threaded and allocator bootstrap happens once.
+            // The bootstrap bitmap storage lives in kernel-owned static memory and is only
+            // exposed through this initializer for the duration of allocator setup.
+            slice::from_raw_parts_mut(
+                core::ptr::addr_of_mut!(BOOTSTRAP_BITMAP_STORAGE).cast::<u8>(),
+                BOOTSTRAP_BITMAP_STORAGE_BYTES,
+            )
         };
 
         Self::initialize(snapshot.regions, storage, managed_page_count, metadata_span)
