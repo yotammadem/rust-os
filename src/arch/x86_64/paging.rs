@@ -33,7 +33,7 @@ pub unsafe fn load_page_table_root(root_table_phys_addr: u64) {
     }
 }
 
-pub unsafe fn activate(plan: ActivationPlan, context: *mut ()) -> ! {
+pub unsafe fn activate(plan: ActivationPlan) -> ! {
     unsafe {
         // Switch into the runtime address space and enter the higher-half continuation
         // through a normal UEFI/x64 call boundary so Rust code sees the expected ABI.
@@ -43,12 +43,10 @@ pub unsafe fn activate(plan: ActivationPlan, context: *mut ()) -> ! {
             "mov rsp, {stack}", // Switch to the higher-half stack alias before calling Rust code
             "sub rsp, 40", // Reserve the required Win64 shadow space
             "mov rax, {entry}", // Stage the continuation target
-            "mov rcx, {context}", // Stage the first argument for the continuation
             "call rax", // Transfer control into the higher-half continuation
             "ud2", // The continuation is not expected to return
             root = in(reg) plan.root_table_phys_addr,
             stack = in(reg) plan.higher_half_stack_pointer,
-            context = in(reg) context,
             entry = in(reg) plan.higher_half_entry_addr,
             options(noreturn)
         );
