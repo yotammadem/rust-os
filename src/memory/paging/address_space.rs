@@ -256,8 +256,10 @@ impl AddressSpace {
             flags,
         });
         self.kernel_region_count += 1;
-        self.next_kernel_alloc_virt =
-            self.next_kernel_alloc_virt.max(virt_start + (page_count * PAGE_SIZE) as u64);
+        if virt_start >= KERNEL_ALLOC_BASE && virt_start < KERNEL_ALLOC_LIMIT {
+            self.next_kernel_alloc_virt =
+                self.next_kernel_alloc_virt.max(virt_start + (page_count * PAGE_SIZE) as u64);
+        }
         Ok(())
     }
 

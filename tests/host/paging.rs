@@ -1,5 +1,6 @@
 use rust_os::{
     KERNEL_BOOT_PHYS_BASE,
+    arch::x86_64::paging::{ActivationPlan, higher_half_alias_addr},
     memory::{
         AddressSpace, BitmapAllocator, EntryFlags, KERNEL_DIRECT_MAP_BASE, MappingRequest,
         MemoryRegion, RegionKind, VirtualAddressLayout, map_range,
@@ -78,6 +79,51 @@ fn kernel_template_maps_kernel_direct_map_and_transition_alias() {
     )
     .expect("alias removal should succeed");
     assert!(kernel.translate(KERNEL_BOOT_PHYS_BASE).is_none());
+}
+
+#[test]
+fn higher_half_alias_address_uses_transition_alias_offset() {
+    let low_addr = KERNEL_BOOT_PHYS_BASE + 0x3456;
+    let higher_half =
+        higher_half_alias_addr(low_addr, KERNEL_BOOT_PHYS_BASE).expect("offset should fit");
+    assert_eq!(higher_half, 0xffff_8000_0000_3456);
+}
+
+#[test]
+fn activation_plan_carries_higher_half_stack_and_alias_metadata() {
+    let mut allocator = allocator_fixture();
+    let (kernel, template) =
+        AddressSpace::create_kernel_template(&mut allocator, KERNEL_BOOT_PHYS_BASE, 2)
+            .expect("kernel template should build");
+
+    let plan = ActivationPlan::from_template(
+        kernel.root_table_phys_addr,
+        0xffff_8000_0000_2000,
+        0xffff_8000_0200_8000,
+        0x0000_0000_0010_0000,
+        &template,
+    );
+
+    assert_eq!(plan.root_table_phys_addr, kernel.root_table_phys_addr);
+    assert_eq!(plan.higher_half_entry_addr, 0xffff_8000_0000_2000);
+    assert_eq!(plan.higher_half_stack_top, 0xffff_8000_0200_8000);
+    assert_eq!(plan.runtime_context_addr, 0x0000_0000_0010_0000);
+    assert_eq!(plan.transition_alias_start, KERNEL_BOOT_PHYS_BASE);
+    assert_eq!(plan.transition_alias_page_count, 2);
+}
+
+#[test]
+fn kernel_template_leaves_kernel_alloc_window_available() {
+    let mut allocator = allocator_fixture();
+    let (mut kernel, _) =
+        AddressSpace::create_kernel_template(&mut allocator, KERNEL_BOOT_PHYS_BASE, 4)
+            .expect("kernel template should build");
+
+    let allocation = kernel
+        .allocate_kernel_virtual(&mut allocator, 32, EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE)
+        .expect("kernel alloc window should remain usable after template setup");
+
+    assert!(allocation.virt_start_addr >= rust_os::memory::KERNEL_ALLOC_BASE);
 }
 
 #[test]

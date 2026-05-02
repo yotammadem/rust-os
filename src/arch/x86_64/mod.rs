@@ -1,3 +1,7 @@
+pub mod gdt;
+pub mod idt;
+pub mod interrupts;
+pub mod timer;
 pub mod debugcon;
 pub mod framebuffer;
 pub mod halt;

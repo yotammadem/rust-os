@@ -4,28 +4,33 @@
 #[cfg(target_os = "uefi")]
 use core::fmt::Write;
 #[cfg(target_os = "uefi")]
+use core::mem::MaybeUninit;
+#[cfg(target_os = "uefi")]
 use core::panic::PanicInfo;
 #[cfg(target_os = "uefi")]
 use rust_os::{
     DIRECT_MAP_SMOKE_PREFIX, PAGING_DIAGNOSTIC_PREFIX,
     arch::x86_64::{
         debugcon::DebugCon, halt,
-        paging::{ActivationPlan, current_instruction_pointer, current_stack_pointer},
+        paging::{
+            ActivationPlan, current_instruction_pointer, flush_runtime_mappings,
+            higher_half_alias_addr,
+        },
         serial::SerialPort,
     },
     boot::uefi::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot},
     kernel::hello,
     memory::{
-        AllocationResult, BitmapAllocator, EntryFlags, KERNEL_VIRT_BASE, MAX_MEMORY_REGIONS,
+        AddressSpace, AllocationResult, BitmapAllocator, EntryFlags, MAX_MEMORY_REGIONS,
         MemoryRegion, PAGE_SIZE, PageSpan, RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES,
-        VirtualAddressLayout, align_down,
+        VirtualAddressLayout, align_down, unmap_range,
     },
 };
 
 #[cfg(target_os = "uefi")]
 const ACTIVE_CODE_WINDOW_PAGE_COUNT: usize = 512;
 #[cfg(target_os = "uefi")]
-const ACTIVE_STACK_WINDOW_PAGE_COUNT: usize = 32;
+const HIGHER_HALF_STACK_PAGE_COUNT: usize = 32;
 #[cfg(target_os = "uefi")]
 const BOOT_MARKER_PREFIX: &str = "boot-step:";
 #[cfg(target_os = "uefi")]
@@ -36,7 +41,18 @@ const BOOT_PANIC_PREFIX: &str = "boot-panic";
 static mut RAW_MEMORY_MAP_STORAGE: [u8; UEFI_MEMORY_MAP_STORAGE_BYTES] =
     [0; UEFI_MEMORY_MAP_STORAGE_BYTES];
 #[cfg(target_os = "uefi")]
-static mut REGION_STORAGE: [MemoryRegion; MAX_MEMORY_REGIONS] = [MemoryRegion::EMPTY; MAX_MEMORY_REGIONS];
+static mut REGION_STORAGE: [MemoryRegion; MAX_MEMORY_REGIONS] =
+    [MemoryRegion::EMPTY; MAX_MEMORY_REGIONS];
+#[cfg(target_os = "uefi")]
+static mut BOOT_RUNTIME: MaybeUninit<BootRuntime> = MaybeUninit::uninit();
+
+#[cfg(target_os = "uefi")]
+struct BootRuntime {
+    allocator: BitmapAllocator<'static>,
+    kernel_space: AddressSpace,
+    transition_alias_start: u64,
+    transition_alias_page_count: usize,
+}
 
 #[cfg(not(target_os = "uefi"))]
 fn main() {}
@@ -102,15 +118,12 @@ pub extern "efiapi" fn efi_main(
     let _ = print_boot_marker(&mut serial, "4 memory-diagnostics");
 
     let current_ip = current_instruction_pointer();
-    let current_stack = current_stack_pointer();
     let code_window_start = align_down(
         current_ip,
         (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64,
     );
-    let stack_window_start = align_down(current_stack, PAGE_SIZE as u64)
-        .saturating_sub(((ACTIVE_STACK_WINDOW_PAGE_COUNT / 2) * PAGE_SIZE) as u64);
 
-    let (kernel_space, template) = match rust_os::memory::AddressSpace::create_kernel_template(
+    let (kernel_space, template) = match AddressSpace::create_kernel_template(
         &mut allocator,
         code_window_start,
         ACTIVE_CODE_WINDOW_PAGE_COUNT,
@@ -128,30 +141,41 @@ pub extern "efiapi" fn efi_main(
     };
     let mut kernel_space = kernel_space;
 
-    if !ranges_overlap(
-        code_window_start,
-        ACTIVE_CODE_WINDOW_PAGE_COUNT,
-        stack_window_start,
-        ACTIVE_STACK_WINDOW_PAGE_COUNT,
+    let higher_half_stack = match kernel_space.allocate_kernel_virtual(
+        &mut allocator,
+        HIGHER_HALF_STACK_PAGE_COUNT,
+        EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
     ) {
-        if kernel_space
-            .map_kernel_region(
-                &mut allocator,
-                stack_window_start,
-                stack_window_start,
-                ACTIVE_STACK_WINDOW_PAGE_COUNT,
-                EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
-            )
-            .is_err()
-        {
-            let _ = print_boot_error_debugcon(&mut debugcon, "stack-alias");
-            let _ = print_boot_error(&mut serial, "stack-alias");
+        Ok(allocation) => allocation,
+        Err(err) => {
+            let _ = print_boot_error_debugcon(&mut debugcon, paging_error_marker(err));
+            let _ = print_boot_error(&mut serial, paging_error_marker(err));
             return EFI_ABORTED;
         }
-    }
+    };
 
-    let activation_plan =
-        ActivationPlan::from_template(kernel_space.root_table_phys_addr, KERNEL_VIRT_BASE, &template);
+    let higher_half_entry_addr = match higher_half_alias_addr(
+        post_activate_entry as *const () as usize as u64,
+        template.transition_alias_start,
+    ) {
+            Some(addr) => addr,
+            None => {
+                let _ = print_boot_error_debugcon(&mut debugcon, "higher-half-entry");
+                let _ = print_boot_error(&mut serial, "higher-half-entry");
+                return EFI_ABORTED;
+            }
+        };
+    // Match the stack shape a normal call would create before entering a Rust function.
+    let higher_half_stack_top =
+        higher_half_stack.virt_start_addr + (higher_half_stack.page_count * PAGE_SIZE) as u64 - 8;
+    let runtime_context_addr = core::ptr::addr_of_mut!(BOOT_RUNTIME) as u64;
+    let activation_plan = ActivationPlan::from_template(
+        kernel_space.root_table_phys_addr,
+        higher_half_entry_addr,
+        higher_half_stack_top,
+        runtime_context_addr,
+        &template,
+    );
     let _ = print_boot_marker_debugcon(&mut debugcon, "6 activation-plan");
     let _ = print_boot_marker(&mut serial, "6 activation-plan");
 
@@ -165,33 +189,15 @@ pub extern "efiapi" fn efi_main(
     let _ = print_boot_marker_debugcon(&mut debugcon, "7 pre-activate");
     let _ = print_boot_marker(&mut serial, "7 pre-activate");
 
-    unsafe { rust_os::arch::x86_64::paging::activate(activation_plan) };
-    let _ = print_boot_marker_debugcon(&mut debugcon, "8 post-activate");
-    let _ = print_boot_marker(&mut serial, "8 post-activate");
-
-    if smoke_test_direct_map_page(&mut serial, &mut allocator, kernel_space.managed_phys_limit())
-        .is_err()
-    {
-        let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke");
-        let _ = print_boot_error(&mut serial, "direct-map-smoke");
-        return EFI_ABORTED;
+    unsafe {
+        core::ptr::write(core::ptr::addr_of_mut!(BOOT_RUNTIME).cast::<BootRuntime>(), BootRuntime {
+            allocator,
+            kernel_space,
+            transition_alias_start: activation_plan.transition_alias_start,
+            transition_alias_page_count: activation_plan.transition_alias_page_count,
+        });
+        rust_os::arch::x86_64::paging::activate_and_continue(activation_plan);
     }
-    let _ = print_boot_marker_debugcon(&mut debugcon, "9 post-direct-map-smoke");
-    let _ = print_boot_marker(&mut serial, "9 post-direct-map-smoke");
-
-    match hello::render(&mut serial) {
-        Ok(()) => {
-            let _ = print_boot_marker_debugcon(&mut debugcon, "10 hello-rendered");
-            let _ = print_boot_marker(&mut serial, "10 hello-rendered");
-        }
-        Err(_) => {
-            let _ = print_boot_error_debugcon(&mut debugcon, "hello-render");
-            let _ = print_boot_error(&mut serial, "hello-render");
-            return EFI_ABORTED;
-        }
-    }
-
-    halt::halt_forever()
 }
 
 #[cfg(target_os = "uefi")]
@@ -212,6 +218,74 @@ fn print_boot_marker_debugcon(debugcon: &mut DebugCon, marker: &str) -> Result<(
 #[cfg(target_os = "uefi")]
 fn print_boot_error_debugcon(debugcon: &mut DebugCon, marker: &str) -> Result<(), ()> {
     writeln!(debugcon, "{BOOT_ERROR_PREFIX} {marker}").map_err(|_| ())
+}
+
+#[cfg(target_os = "uefi")]
+fn paging_error_marker(err: rust_os::memory::PagingError) -> &'static str {
+    match err {
+        rust_os::memory::PagingError::AddressOutOfRange => "higher-half-stack-address-range",
+        rust_os::memory::PagingError::AllocatorStateCorrupted => "higher-half-stack-allocator-corrupt",
+        rust_os::memory::PagingError::CapacityExceeded => "higher-half-stack-capacity",
+        rust_os::memory::PagingError::EmptyRequest => "higher-half-stack-empty",
+        rust_os::memory::PagingError::MappingConflict => "higher-half-stack-conflict",
+        rust_os::memory::PagingError::OutOfMemory => "higher-half-stack-oom",
+        rust_os::memory::PagingError::UnalignedAddress => "higher-half-stack-unaligned",
+    }
+}
+
+#[cfg(target_os = "uefi")]
+extern "C" fn post_activate_entry(runtime_context_addr: u64) -> ! {
+    let mut runtime = unsafe { core::ptr::read(runtime_context_addr as *const BootRuntime) };
+    let mut debugcon = DebugCon::new();
+    let mut serial = unsafe { SerialPort::com1() };
+    unsafe { serial.initialize() };
+
+    let _ = print_boot_marker_debugcon(&mut debugcon, "8 higher-half-entry");
+    let _ = print_boot_marker(&mut serial, "8 higher-half-entry");
+
+    if unmap_range(
+        &mut runtime.kernel_space,
+        runtime.transition_alias_start,
+        runtime.transition_alias_page_count,
+    )
+    .is_err()
+    {
+        let _ = print_boot_error_debugcon(&mut debugcon, "transition-alias-remove");
+        let _ = print_boot_error(&mut serial, "transition-alias-remove");
+        halt::halt_forever();
+    }
+
+    unsafe { flush_runtime_mappings(runtime.kernel_space.root_table_phys_addr) };
+    let _ = print_boot_marker_debugcon(&mut debugcon, "9 transition-alias-removed");
+    let _ = print_boot_marker(&mut serial, "9 transition-alias-removed");
+
+    if smoke_test_direct_map_page(
+        &mut serial,
+        &mut runtime.allocator,
+        runtime.kernel_space.managed_phys_limit(),
+    )
+    .is_err()
+    {
+        let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke");
+        let _ = print_boot_error(&mut serial, "direct-map-smoke");
+        halt::halt_forever();
+    }
+    let _ = print_boot_marker_debugcon(&mut debugcon, "10 post-direct-map-smoke");
+    let _ = print_boot_marker(&mut serial, "10 post-direct-map-smoke");
+
+    match hello::render(&mut serial) {
+        Ok(()) => {
+            let _ = print_boot_marker_debugcon(&mut debugcon, "11 hello-rendered");
+            let _ = print_boot_marker(&mut serial, "11 hello-rendered");
+        }
+        Err(_) => {
+            let _ = print_boot_error_debugcon(&mut debugcon, "hello-render");
+            let _ = print_boot_error(&mut serial, "hello-render");
+            halt::halt_forever();
+        }
+    }
+
+    halt::halt_forever()
 }
 
 #[cfg(target_os = "uefi")]
@@ -320,13 +394,6 @@ fn print_page_range(serial: &mut SerialPort, start_page: usize, end_page: usize)
 }
 
 #[cfg(target_os = "uefi")]
-fn ranges_overlap(start_a: u64, page_count_a: usize, start_b: u64, page_count_b: usize) -> bool {
-    let end_a = start_a + (page_count_a * PAGE_SIZE) as u64;
-    let end_b = start_b + (page_count_b * PAGE_SIZE) as u64;
-    start_a < end_b && start_b < end_a
-}
-
-#[cfg(target_os = "uefi")]
 fn print_paging_diagnostics(
     serial: &mut SerialPort,
     activation_plan: &ActivationPlan,
@@ -342,6 +409,12 @@ fn print_paging_diagnostics(
         serial,
         "higher-half entry: 0x{:016x}",
         activation_plan.higher_half_entry_addr
+    )
+    .map_err(|_| ())?;
+    writeln!(
+        serial,
+        "higher-half stack top: 0x{:016x}",
+        activation_plan.higher_half_stack_top
     )
     .map_err(|_| ())?;
     writeln!(

@@ -8,9 +8,9 @@ pub use map::{
     PageSpan, PhysAddr, RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES, align_down, align_up,
 };
 pub use paging::{
-    AddressSpace, AddressSpaceKind, EntryFlags, KernelMappingTemplate, KernelVirtualAllocation,
-    KERNEL_DIRECT_MAP_BASE, KERNEL_DIRECT_MAP_LIMIT, MappedPage, MappingRequest,
-    KERNEL_VIRT_BASE, PAGE_TABLE_ADDR_MASK, PAGE_TABLE_ENTRIES, PageTableLevel,
+    AddressSpace, AddressSpaceKind, EntryFlags, KERNEL_ALLOC_BASE, KernelMappingTemplate,
+    KernelVirtualAllocation, KERNEL_DIRECT_MAP_BASE, KERNEL_DIRECT_MAP_LIMIT, MappedPage,
+    MappingRequest, KERNEL_VIRT_BASE, PAGE_TABLE_ADDR_MASK, PAGE_TABLE_ENTRIES, PageTableLevel,
     PagingAllocationRecord, PagingError, VirtualAddressLayout, map_range, unmap_range,
 };
 #[cfg(not(target_os = "uefi"))]

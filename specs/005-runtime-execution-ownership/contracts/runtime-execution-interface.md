@@ -89,7 +89,9 @@
 ## Unsafe And Assembly Boundaries
 
 - `src/arch/x86_64/paging.rs` owns the CR3-sensitive continuation boundary and
-  any stack/register invariants required for the first higher-half instruction
+  any stack/register invariants required for the first higher-half instruction;
+  the trampoline must disable interrupts, switch to a higher-half stack, and
+  jump without returning through the low bootstrap path
 - `src/arch/x86_64/gdt.rs` and `src/arch/x86_64/idt.rs` own descriptor
   publication, selector loading, and TSS activation invariants
 - `src/arch/x86_64/interrupts.rs` and `asm/boot.s` own any unavoidable entry

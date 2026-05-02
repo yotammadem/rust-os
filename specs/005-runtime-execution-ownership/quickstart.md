@@ -39,8 +39,8 @@ Expected result:
 - The serial transcript still includes the earlier paging diagnostics and
   direct-map proof markers
 - The transcript includes distinct markers for:
-  - higher-half continuation reached
-  - temporary low/current execution alias removed
+  - `boot-step: 8 higher-half-entry`
+  - `boot-step: 9 transition-alias-removed`
   - kernel-owned descriptor and interrupt state installed
   - deliberate breakpoint handler entered and returned
   - hardware timer interrupt woke the idle CPU
@@ -90,3 +90,6 @@ make build
 - Planned validation for this feature: `make build`
 - Planned validation for this feature: `./run.sh`
 - Planned validation for this feature: `QEMU_DEBUG_FLAGS=1 QEMU_DEBUGCON_LOG=/tmp/rust-os-debugcon.log ./run.sh`
+- Current status on 2026-05-02: host tests and freestanding compilation pass, but QEMU
+  still resets after `boot-step: 7 pre-activate` before reaching the first
+  higher-half continuation marker

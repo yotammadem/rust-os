@@ -2,6 +2,8 @@ target/
 .build/
 debug/
 release/
+*.rlib
+*.rs.bk
 bin/*
 !bin/.gitkeep
 .DS_Store

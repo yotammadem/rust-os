@@ -17,9 +17,9 @@
 
 **Purpose**: Refresh feature docs and validation scaffolding for the runtime-ownership work
 
-- [ ] T001 Update feature quickstart transcript expectations in `specs/005-runtime-execution-ownership/quickstart.md`
-- [ ] T002 [P] Add runtime-ownership transcript assertions in `tests/e2e_boot_serial.py`
-- [ ] T003 [P] Add feature module declarations and placeholders in `src/arch/x86_64/mod.rs`
+- [X] T001 Update feature quickstart transcript expectations in `specs/005-runtime-execution-ownership/quickstart.md`
+- [X] T002 [P] Add runtime-ownership transcript assertions in `tests/e2e_boot_serial.py`
+- [X] T003 [P] Add feature module declarations and placeholders in `src/arch/x86_64/mod.rs`
 
 ---
 
@@ -29,12 +29,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Define higher-half continuation and alias-teardown metadata in `src/arch/x86_64/paging.rs`
-- [ ] T005 [P] Add shared descriptor-table and trap-frame types in `src/arch/x86_64/gdt.rs`
-- [ ] T006 [P] Add shared IDT vector and handler registration types in `src/arch/x86_64/idt.rs`
-- [ ] T007 [P] Add shared PIC/PIT timer control and IRQ constants in `src/arch/x86_64/timer.rs`
-- [ ] T008 Add host-side ownership invariants for continuation metadata and interrupt proof events in `tests/host/paging.rs`
-- [ ] T009 Document required assembly and unsafe invariants for continuation and interrupt entry in `specs/005-runtime-execution-ownership/contracts/runtime-execution-interface.md`
+- [X] T004 Define higher-half continuation and alias-teardown metadata in `src/arch/x86_64/paging.rs`
+- [X] T005 [P] Add shared descriptor-table and trap-frame types in `src/arch/x86_64/gdt.rs`
+- [X] T006 [P] Add shared IDT vector and handler registration types in `src/arch/x86_64/idt.rs`
+- [X] T007 [P] Add shared PIC/PIT timer control and IRQ constants in `src/arch/x86_64/timer.rs`
+- [X] T008 Add host-side ownership invariants for continuation metadata and interrupt proof events in `tests/host/paging.rs`
+- [X] T009 Document required assembly and unsafe invariants for continuation and interrupt entry in `specs/005-runtime-execution-ownership/contracts/runtime-execution-interface.md`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -48,16 +48,16 @@
 
 ### Validation for User Story 1 ⚠️
 
-- [ ] T010 [P] [US1] Add Rust tests for continuation-plan and alias-removal invariants in `tests/host/paging.rs`
-- [ ] T011 [US1] Define higher-half continuation and alias-removal boot validation in `specs/005-runtime-execution-ownership/quickstart.md`
+- [X] T010 [P] [US1] Add Rust tests for continuation-plan and alias-removal invariants in `tests/host/paging.rs`
+- [X] T011 [US1] Define higher-half continuation and alias-removal boot validation in `specs/005-runtime-execution-ownership/quickstart.md`
 
 ### Implementation for User Story 1
 
 - [ ] T012 [P] [US1] Extend transition-alias mapping and teardown support in `src/memory/paging/address_space.rs`
-- [ ] T013 [P] [US1] Implement deterministic continuation-plan construction in `src/arch/x86_64/paging.rs`
-- [ ] T014 [US1] Add the continuation entry and post-switch jump stub in `asm/boot.s`
-- [ ] T015 [US1] Integrate the higher-half continuation flow and alias-removal markers in `src/main.rs`
-- [ ] T016 [US1] Document the continuation and alias-removal unsafe boundary in `src/arch/x86_64/paging.rs`
+- [X] T013 [P] [US1] Implement deterministic continuation-plan construction in `src/arch/x86_64/paging.rs`
+- [X] T014 [US1] Add the continuation entry and post-switch jump stub in `asm/boot.s`
+- [X] T015 [US1] Integrate the higher-half continuation flow and alias-removal markers in `src/main.rs`
+- [X] T016 [US1] Document the continuation and alias-removal unsafe boundary in `src/arch/x86_64/paging.rs`
 
 **Checkpoint**: User Story 1 should boot through the runtime root, continue in the higher half, and run without the temporary low/current alias
 
