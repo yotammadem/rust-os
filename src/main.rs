@@ -5,7 +5,7 @@
 use core::panic::PanicInfo;
 #[cfg(target_os = "uefi")]
 use rust_os::{
-    arch::x86_64::{framebuffer::FramebufferConsole, halt},
+    arch::x86_64::{halt, serial::SerialPort},
     boot::uefi::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot},
     kernel::hello,
     memory::{BitmapAllocator, MAX_MEMORY_REGIONS, MemoryRegion, UEFI_MEMORY_MAP_STORAGE_BYTES},
@@ -38,14 +38,11 @@ pub extern "efiapi" fn efi_main(
         Err(_) => return EFI_ABORTED,
     };
 
-    let mut console = match unsafe { FramebufferConsole::from_system_table(system_table) } {
-        Some(console) => console,
-        None => return EFI_ABORTED,
-    };
-
-    match hello::render(&mut console) {
+    let mut serial = unsafe { SerialPort::com1() };
+    unsafe { serial.initialize() };
+    match hello::render(&mut serial) {
         Ok(()) => {}
-        Err(status) => return status,
+        Err(_) => return EFI_ABORTED,
     }
 
     halt::halt_forever()

@@ -1,4 +1,4 @@
-use rust_os::{BOOT_IMAGE_PATH, HELLO_WORLD_UTF16, utf16_is_nul_terminated};
+use rust_os::{BOOT_IMAGE_PATH, HELLO_WORLD_SERIAL};
 
 #[test]
 fn boot_image_path_points_to_bin_image() {
@@ -6,6 +6,6 @@ fn boot_image_path_points_to_bin_image() {
 }
 
 #[test]
-fn hello_message_buffer_is_nul_terminated() {
-    assert!(utf16_is_nul_terminated(&HELLO_WORLD_UTF16));
+fn hello_message_is_serial_line_terminated() {
+    assert!(HELLO_WORLD_SERIAL.ends_with("\r\n"));
 }

@@ -1,7 +1,7 @@
-use crate::HELLO_WORLD_UTF16;
-use crate::arch::x86_64::framebuffer::FramebufferConsole;
-use crate::boot::uefi::EfiStatus;
+use core::fmt::{self, Write};
 
-pub fn render(console: &mut FramebufferConsole) -> Result<(), EfiStatus> {
-    console.write_utf16(&HELLO_WORLD_UTF16)
+use crate::HELLO_WORLD;
+
+pub fn render(writer: &mut impl Write) -> fmt::Result {
+    writeln!(writer, "{HELLO_WORLD}")
 }
