@@ -11,6 +11,8 @@
 
 - Q: Should the kernel keep a temporary identity mapping during virtual-memory bring-up, or switch directly to higher-half mappings only? → A: Switch directly to higher-half mappings only, with no identity mapping kept after enable.
 - Q: Should process address spaces share the same kernel higher-half mapping, or should each process hold a separate copy of kernel mappings? → A: Every process address space includes the same shared kernel higher-half mapping, plus its own private process mappings.
+- Q: Should the virtual memory manager reserve a fixed private buffer for page directories and page tables, or allocate and track those pages through the bitmap allocator? → A: Allocate paging-structure pages on demand through the bitmap allocator and track ownership explicitly; do not rely on a fixed preallocated VMM pool.
+- Q: When mapping a virtual range, should the caller provide already-allocated physical backing pages, or should the virtual memory manager allocate them automatically? → A: Support both modes: explicit mapping of caller-supplied physical pages and VMM-owned kernel allocations that allocate physical backing pages and map them into the higher-half kernel space.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -129,6 +131,9 @@ mappings the process needs to execute.
   directory for an address space and create derived page tables on demand.
 - **FR-003**: The virtual memory manager MUST obtain physical pages for paging
   structures through the existing physical page allocator.
+- **FR-003a**: The virtual memory manager MUST allocate paging-structure pages
+  on demand and track their ownership explicitly instead of depending on a fixed
+  preallocated private buffer.
 - **FR-004**: The system MUST prepare kernel address-space mappings that place
   kernel memory in its intended higher virtual address range.
 - **FR-005**: The system MUST preserve the kernel memory regions required for
@@ -148,6 +153,11 @@ mappings the process needs to execute.
   address space is torn down.
 - **FR-012**: The system MUST reject empty, invalid, or conflicting mapping or
   paging requests without corrupting existing address-space state.
+- **FR-012a**: The system MUST support mapping a caller-supplied physical page
+  range into an address space without reallocating that backing range.
+- **FR-012b**: The system MUST support a kernel-owned allocation path that
+  obtains physical pages through the bitmap allocator and maps them into the
+  kernel higher-half virtual space.
 - **FR-013**: The system MUST define a valid bootstrap mapping strategy that
   allows the kernel to transition safely into its higher-address mapping state.
 - **FR-014**: The bootstrap transition MUST activate the higher-address kernel
@@ -183,9 +193,14 @@ mappings the process needs to execute.
 - **Page Table Page**: A physical page dedicated to storing address translation
   entries for part of an address space.
 - **Mapping Request**: A request to ensure that a virtual address range is
-  represented in an address space with the required paging structures.
+  represented in an address space with the required paging structures, either by
+  mapping caller-supplied physical backing pages or by publishing VMM-owned
+  kernel allocations.
 - **Paging Allocation Record**: The ownership information needed to track which
   physical pages are reserved for a given address space's paging structures.
+- **Kernel Virtual Allocation**: A VMM-owned higher-half kernel mapping whose
+  physical backing pages and required paging structures are both obtained through
+  the bitmap allocator.
 
 ## Success Criteria *(mandatory)*
 
@@ -214,6 +229,8 @@ mappings the process needs to execute.
 ## Assumptions
 
 - The existing physical page allocator is available before virtual memory setup
+- The existing physical page allocator remains the only source of physical-page
+  ownership for both paging structures and VMM-owned kernel virtual allocations.
 - The kernel already knows which physical memory regions must remain accessible
   during and immediately after the transition to virtual memory.
 - The intended kernel virtual-address layout includes a higher-address region
