@@ -1,4 +1,4 @@
-use rust_os::{DEFAULT_OVMF_CODE, RUN_MISSING_FIRMWARE_ERROR, RUN_MISSING_IMAGE_ERROR};
+use rust_os::{DEFAULT_OVMF_CODE, RUN_MISSING_ARTIFACT_ERROR, RUN_MISSING_FIRMWARE_ERROR};
 
 #[test]
 fn default_firmware_path_matches_plan() {
@@ -10,6 +10,6 @@ fn default_firmware_path_matches_plan() {
 
 #[test]
 fn run_errors_are_clear() {
-    assert!(RUN_MISSING_IMAGE_ERROR.contains("make build"));
+    assert!(RUN_MISSING_ARTIFACT_ERROR.contains("make build"));
     assert!(RUN_MISSING_FIRMWARE_ERROR.contains("OVMF_CODE"));
 }

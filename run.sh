@@ -1,11 +1,13 @@
 #!/bin/zsh
 set -euo pipefail
 
-IMAGE="bin/hello-boot.img"
+EFI_TREE=".build/efi"
+GRUB_EFI="$EFI_TREE/EFI/BOOT/BOOTX64.EFI"
+APP_EFI="$EFI_TREE/EFI/BOOT/HELLO.EFI"
 OVMF_CODE="${OVMF_CODE:-/usr/local/share/qemu/edk2-x86_64-code.fd}"
 
-if [[ ! -f "$IMAGE" ]]; then
-  echo "missing boot image: run \`make build\` first" >&2
+if [[ ! -f "$GRUB_EFI" || ! -f "$APP_EFI" ]]; then
+  echo "missing staged EFI tree: run \`make build\` first" >&2
   exit 1
 fi
 
@@ -24,4 +26,4 @@ exec qemu-system-x86_64 \
   -m 256M \
   -serial stdio \
   -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
-  -drive format=raw,file="$IMAGE"
+  -drive format=raw,file=fat:rw:"$EFI_TREE"

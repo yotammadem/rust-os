@@ -2,6 +2,8 @@
 #![cfg_attr(target_os = "uefi", no_main)]
 
 #[cfg(target_os = "uefi")]
+use core::fmt::Write;
+#[cfg(target_os = "uefi")]
 use core::panic::PanicInfo;
 #[cfg(target_os = "uefi")]
 use rust_os::{
@@ -9,8 +11,8 @@ use rust_os::{
     boot::uefi::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot},
     kernel::hello,
     memory::{
-        AllocationResult, BitmapAllocator, MAX_MEMORY_REGIONS, MemoryRegion,
-        UEFI_MEMORY_MAP_STORAGE_BYTES,
+        AllocationResult, BitmapAllocator, MAX_MEMORY_REGIONS, MemoryRegion, PAGE_SIZE, PageSpan,
+        RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES,
     },
 };
 
@@ -48,6 +50,10 @@ pub extern "efiapi" fn efi_main(
         return EFI_ABORTED;
     }
 
+    if print_memory_diagnostics(&mut serial, &snapshot, &allocator).is_err() {
+        return EFI_ABORTED;
+    }
+
     match hello::render(&mut serial) {
         Ok(()) => {}
         Err(_) => return EFI_ABORTED,
@@ -76,6 +82,75 @@ fn smoke_test_allocated_page(allocator: &mut BitmapAllocator<'_>) -> Result<(), 
         AllocationResult::Released(_) => Ok(()),
         _ => Err(()),
     }
+}
+
+#[cfg(target_os = "uefi")]
+fn print_memory_diagnostics(
+    serial: &mut SerialPort,
+    snapshot: &rust_os::memory::BootMemoryMapSnapshot<'_>,
+    allocator: &BitmapAllocator<'_>,
+) -> Result<(), ()> {
+    let available_bytes = allocator.free_page_count() * PAGE_SIZE;
+    writeln!(
+        serial,
+        "available memory: {} KiB ({} pages)",
+        available_bytes / 1024,
+        allocator.free_page_count()
+    )
+    .map_err(|_| ())?;
+    writeln!(serial, "allocatable ranges:").map_err(|_| ())?;
+
+    for region in snapshot.regions {
+        if region.kind != RegionKind::Usable {
+            continue;
+        }
+
+        print_allocatable_segments(serial, *region, allocator.metadata_span())?;
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "uefi")]
+fn print_allocatable_segments(
+    serial: &mut SerialPort,
+    region: MemoryRegion,
+    metadata_span: PageSpan,
+) -> Result<(), ()> {
+    let region_start = region.start_page_index;
+    let region_end = region.end_page_index();
+    let metadata_start = metadata_span.start_page_index;
+    let metadata_end = metadata_span.start_page_index + metadata_span.page_count;
+
+    if metadata_end <= region_start || metadata_start >= region_end {
+        return print_page_range(serial, region_start, region_end);
+    }
+
+    if region_start < metadata_start {
+        print_page_range(serial, region_start, metadata_start)?;
+    }
+
+    if metadata_end < region_end {
+        print_page_range(serial, metadata_end, region_end)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "uefi")]
+fn print_page_range(serial: &mut SerialPort, start_page: usize, end_page: usize) -> Result<(), ()> {
+    if start_page >= end_page {
+        return Ok(());
+    }
+
+    let start_phys = start_page * PAGE_SIZE;
+    let end_phys = end_page * PAGE_SIZE;
+    writeln!(
+        serial,
+        "  0x{start_phys:016x}-0x{end_phys:016x} ({} KiB)",
+        (end_phys - start_phys) / 1024
+    )
+    .map_err(|_| ())
 }
 
 #[cfg(target_os = "uefi")]
