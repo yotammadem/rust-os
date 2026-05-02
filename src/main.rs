@@ -10,12 +10,11 @@ use rust_os::{
     DIRECT_MAP_SMOKE_PREFIX, PAGING_DIAGNOSTIC_PREFIX,
     arch::x86_64::{
         debugcon::DebugCon, halt,
-        paging::{ActivationPlan, current_instruction_pointer, current_stack_pointer},
+        paging::{ActivationPlan, current_instruction_pointer},
         serial::SerialPort,
     },
     boot::uefi::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot},
     kernel::{hello, runtime},
-    memory::paging::KERNEL_ALLOC_BASE,
     memory::{
         AllocationResult, BitmapAllocator, EntryFlags, KERNEL_VIRT_BASE, MAX_MEMORY_REGIONS,
         MemoryRegion, PAGE_SIZE, PageSpan, RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES,
@@ -38,9 +37,6 @@ static mut RAW_MEMORY_MAP_STORAGE: [u8; UEFI_MEMORY_MAP_STORAGE_BYTES] =
     [0; UEFI_MEMORY_MAP_STORAGE_BYTES];
 #[cfg(target_os = "uefi")]
 static mut REGION_STORAGE: [MemoryRegion; MAX_MEMORY_REGIONS] = [MemoryRegion::EMPTY; MAX_MEMORY_REGIONS];
-
-#[cfg(target_os = "uefi")]
-const CONTINUATION_STACK_ALIAS_BASE: u64 = KERNEL_ALLOC_BASE;
 
 #[cfg(not(target_os = "uefi"))]
 fn main() {}
@@ -106,13 +102,10 @@ pub extern "efiapi" fn efi_main(
     let _ = print_boot_marker(&mut serial, "4 memory-diagnostics");
 
     let current_ip = current_instruction_pointer();
-    let current_stack = current_stack_pointer();
     let code_window_start = align_down(
         current_ip,
         (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64,
     );
-    let stack_window_start = align_down(current_stack, PAGE_SIZE as u64)
-        .saturating_sub(((ACTIVE_STACK_WINDOW_PAGE_COUNT / 2) * PAGE_SIZE) as u64);
 
     let (kernel_space, template) = match rust_os::memory::AddressSpace::create_kernel_template(
         &mut allocator,
@@ -132,43 +125,6 @@ pub extern "efiapi" fn efi_main(
     };
     let mut kernel_space = kernel_space;
 
-    if !ranges_overlap(
-        code_window_start,
-        ACTIVE_CODE_WINDOW_PAGE_COUNT,
-        stack_window_start,
-        ACTIVE_STACK_WINDOW_PAGE_COUNT,
-    ) {
-        if kernel_space
-            .map_kernel_region(
-                &mut allocator,
-                stack_window_start,
-                stack_window_start,
-                ACTIVE_STACK_WINDOW_PAGE_COUNT,
-                EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
-            )
-            .is_err()
-        {
-            let _ = print_boot_error_debugcon(&mut debugcon, "stack-alias");
-            let _ = print_boot_error(&mut serial, "stack-alias");
-            return EFI_ABORTED;
-        }
-    }
-
-    if kernel_space
-        .map_kernel_region(
-            &mut allocator,
-            CONTINUATION_STACK_ALIAS_BASE,
-            stack_window_start,
-            ACTIVE_STACK_WINDOW_PAGE_COUNT,
-            EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
-        )
-        .is_err()
-    {
-        let _ = print_boot_error_debugcon(&mut debugcon, "stack-high-alias");
-        let _ = print_boot_error(&mut serial, "stack-high-alias");
-        return EFI_ABORTED;
-    }
-
     let higher_half_entry_addr = match higher_half_entry_addr(code_window_start) {
         Some(addr) => addr,
         None => {
@@ -178,15 +134,20 @@ pub extern "efiapi" fn efi_main(
         }
     };
 
+    let continuation_stack = match kernel_space.allocate_kernel_virtual(
+        &mut allocator,
+        ACTIVE_STACK_WINDOW_PAGE_COUNT,
+        EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE,
+    ) {
+        Ok(allocation) => allocation,
+        Err(_) => {
+            let _ = print_boot_error_debugcon(&mut debugcon, "stack-allocate");
+            let _ = print_boot_error(&mut serial, "stack-allocate");
+            return EFI_ABORTED;
+        }
+    };
     let higher_half_stack_pointer =
-        match remap_window_address(current_stack, stack_window_start, CONTINUATION_STACK_ALIAS_BASE) {
-            Some(addr) => addr,
-            None => {
-                let _ = print_boot_error_debugcon(&mut debugcon, "stack-high-pointer");
-                let _ = print_boot_error(&mut serial, "stack-high-pointer");
-                return EFI_ABORTED;
-            }
-        };
+        continuation_stack.virt_start_addr + (continuation_stack.page_count * PAGE_SIZE) as u64;
 
     let activation_plan = ActivationPlan::from_template(
         kernel_space.root_table_phys_addr,
@@ -223,18 +184,6 @@ fn higher_half_entry_addr(code_window_start: u64) -> Option<u64> {
     }
 
     KERNEL_VIRT_BASE.checked_add(continuation_addr - code_window_start)
-}
-
-#[cfg(target_os = "uefi")]
-fn remap_window_address(addr: u64, low_window_start: u64, high_window_start: u64) -> Option<u64> {
-    let window_size = (ACTIVE_STACK_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64;
-    let low_window_end = low_window_start.checked_add(window_size)?;
-
-    if addr < low_window_start || addr >= low_window_end {
-        return None;
-    }
-
-    high_window_start.checked_add(addr - low_window_start)
 }
 
 #[cfg(target_os = "uefi")]
@@ -393,13 +342,6 @@ fn print_page_range(serial: &mut SerialPort, start_page: usize, end_page: usize)
         (end_phys - start_phys) / 1024
     )
     .map_err(|_| ())
-}
-
-#[cfg(target_os = "uefi")]
-fn ranges_overlap(start_a: u64, page_count_a: usize, start_b: u64, page_count_b: usize) -> bool {
-    let end_a = start_a + (page_count_a * PAGE_SIZE) as u64;
-    let end_b = start_b + (page_count_b * PAGE_SIZE) as u64;
-    start_a < end_b && start_b < end_a
 }
 
 #[cfg(target_os = "uefi")]

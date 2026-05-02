@@ -133,6 +133,23 @@ fn kernel_owned_virtual_allocation_consumes_allocator_pages() {
 }
 
 #[test]
+fn kernel_template_allows_follow_on_kernel_virtual_allocation() {
+    let mut allocator = allocator_fixture();
+    let (mut kernel, _template) =
+        AddressSpace::create_kernel_template(&mut allocator, KERNEL_BOOT_PHYS_BASE, 4)
+            .expect("kernel template should build");
+    let before = allocator.free_page_count();
+
+    let allocation = kernel
+        .allocate_kernel_virtual(&mut allocator, 2, EntryFlags::WRITABLE | EntryFlags::NO_EXECUTE)
+        .expect("follow-on kernel allocation should succeed after template mappings");
+
+    assert!(allocation.virt_start_addr >= rust_os::memory::KERNEL_VIRT_BASE + 0x0200_0000);
+    assert!(kernel.translate(allocation.virt_start_addr).is_some());
+    assert!(allocator.free_page_count() < before);
+}
+
+#[test]
 fn process_address_spaces_share_kernel_mapping_but_keep_private_mappings_isolated() {
     let mut allocator = allocator_fixture();
     let (kernel, template) =
