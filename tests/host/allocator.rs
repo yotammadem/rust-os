@@ -117,3 +117,43 @@ fn invalid_free_of_never_allocated_span_is_rejected() {
         AllocationResult::InvalidFree
     );
 }
+
+#[test]
+fn rebasing_bootstrap_storage_moves_allocator_bitmap_accesses() {
+    let regions = [
+        MemoryRegion::from_aligned_range(0x0000, 0x1000, RegionKind::Reserved),
+        MemoryRegion::from_aligned_range(0x1000, 0x9000, RegionKind::Usable),
+        MemoryRegion::from_aligned_range(0x9000, 0xb000, RegionKind::Kernel),
+        MemoryRegion::from_aligned_range(0xb000, 0xc000, RegionKind::Boot),
+    ];
+
+    let storage_len = BitmapAllocator::required_storage_bytes_for_managed_pages(12);
+    let low_storage = vec![0u8; storage_len].into_boxed_slice();
+    let low_storage = Box::leak(low_storage);
+    let low_base = low_storage.as_mut_ptr() as usize as u64;
+
+    let mut allocator =
+        BitmapAllocator::from_regions(&regions, low_storage).expect("allocator should initialize");
+
+    let mut high_storage = vec![0u8; storage_len].into_boxed_slice();
+    high_storage.copy_from_slice(unsafe {
+        core::slice::from_raw_parts(low_base as *const u8, storage_len)
+    });
+    let high_base = high_storage.as_mut_ptr() as usize as u64;
+
+    let low_byte_before = unsafe { *(low_base as *const u8) };
+    let high_byte_before = high_storage[0];
+
+    assert!(unsafe { allocator.rebase_bootstrap_storage(low_base, high_base) });
+
+    let AllocationResult::Allocated(span) = allocator.allocate_page() else {
+        panic!("expected allocated page");
+    };
+    assert_eq!(span.start_phys_addr, (2 * PAGE_SIZE) as u64);
+
+    let low_byte_after = unsafe { *(low_base as *const u8) };
+    let high_byte_after = unsafe { *(high_base as *const u8) };
+
+    assert_eq!(low_byte_after, low_byte_before);
+    assert_ne!(high_byte_after, high_byte_before);
+}

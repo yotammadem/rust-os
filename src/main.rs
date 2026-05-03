@@ -18,7 +18,7 @@ use rust_os::{
     memory::{
         AllocationResult, BitmapAllocator, EntryFlags, KERNEL_VIRT_BASE, MAX_MEMORY_REGIONS,
         MemoryRegion, PAGE_SIZE, PageSpan, RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES,
-        VirtualAddressLayout, align_down,
+        VirtualAddressLayout, align_down, set_runtime_page_access_active,
     },
 };
 
@@ -158,7 +158,8 @@ pub extern "efiapi" fn efi_main(
     let _ = print_boot_marker_debugcon(&mut debugcon, "6 activation-plan");
     let _ = print_boot_marker(&mut serial, "6 activation-plan");
 
-    if print_paging_diagnostics(&mut serial, &activation_plan, kernel_space.managed_phys_limit())
+    let managed_phys_limit = kernel_space.managed_phys_limit();
+    if print_paging_diagnostics(&mut serial, &activation_plan, managed_phys_limit)
         .is_err()
     {
         let _ = print_boot_error_debugcon(&mut debugcon, "paging-diagnostics");
@@ -168,7 +169,13 @@ pub extern "efiapi" fn efi_main(
     let _ = print_boot_marker_debugcon(&mut debugcon, "7 pre-activate");
     let _ = print_boot_marker(&mut serial, "7 pre-activate");
 
-    runtime::install(allocator, kernel_space.managed_phys_limit());
+    runtime::install(
+        kernel_space,
+        allocator,
+        managed_phys_limit,
+        activation_plan.transition_alias_start,
+        activation_plan.transition_alias_page_count,
+    );
 
     unsafe { rust_os::arch::x86_64::paging::activate(activation_plan) };
 }
@@ -188,18 +195,62 @@ fn higher_half_entry_addr(code_window_start: u64) -> Option<u64> {
 
 #[cfg(target_os = "uefi")]
 unsafe extern "C" fn higher_half_continuation() -> ! {
+    const TEST_PATTERN: u64 = 0x5a17_c0de_d15e_a5e5;
+
     let mut debugcon = DebugCon::new();
     let mut serial = unsafe { SerialPort::com1() };
     let allocator = unsafe { runtime::allocator() };
+    let managed_phys_limit = runtime::managed_phys_limit();
 
     let _ = print_boot_marker_debugcon(&mut debugcon, "8 post-activate");
     let _ = print_boot_marker(&mut serial, "8 post-activate");
     let _ = writeln!(serial, "higher-half rip: 0x{:016x}", current_instruction_pointer());
-
-    if smoke_test_direct_map_page(&mut serial, allocator, runtime::managed_phys_limit()).is_err() {
-        let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke");
-        let _ = print_boot_error(&mut serial, "direct-map-smoke");
+    set_runtime_page_access_active(true);
+    if unsafe { runtime::remove_transition_alias() }.is_err() {
+        let _ = print_boot_error_debugcon(&mut debugcon, "transition-alias-remove");
+        let _ = print_boot_error(&mut serial, "transition-alias-remove");
         halt::halt_forever();
+    }
+    let AllocationResult::Allocated(span) = allocator.allocate_page() else {
+        let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke-allocate");
+        let _ = print_boot_error(&mut serial, "direct-map-smoke-allocate");
+        halt::halt_forever();
+    };
+
+    let direct_map_virt_addr =
+        match VirtualAddressLayout::phys_to_direct_map_virt(span.start_phys_addr, managed_phys_limit) {
+            Some(addr) => addr,
+            None => {
+                let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke-translate");
+                let _ = print_boot_error(&mut serial, "direct-map-smoke-translate");
+                halt::halt_forever();
+            }
+        };
+    let page_ptr = direct_map_virt_addr as *mut u64;
+    unsafe {
+        core::ptr::write_bytes(page_ptr.cast::<u8>(), 0, PAGE_SIZE);
+        core::ptr::write_volatile(page_ptr, TEST_PATTERN);
+        if core::ptr::read_volatile(page_ptr) != TEST_PATTERN {
+            let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke-readback");
+            let _ = print_boot_error(&mut serial, "direct-map-smoke-readback");
+            halt::halt_forever();
+        }
+    }
+
+    match allocator.free_pages(span) {
+        AllocationResult::Released(_) => {
+            if serial.write_str(DIRECT_MAP_SMOKE_PREFIX).is_err()
+                || serial.write_str(" ok\r\n").is_err()
+            {
+                let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke-print");
+                halt::halt_forever();
+            }
+        }
+        _ => {
+            let _ = print_boot_error_debugcon(&mut debugcon, "direct-map-smoke-free");
+            let _ = print_boot_error(&mut serial, "direct-map-smoke-free");
+            halt::halt_forever();
+        }
     }
     let _ = print_boot_marker_debugcon(&mut debugcon, "9 post-direct-map-smoke");
     let _ = print_boot_marker(&mut serial, "9 post-direct-map-smoke");
@@ -237,42 +288,6 @@ fn print_boot_marker_debugcon(debugcon: &mut DebugCon, marker: &str) -> Result<(
 #[cfg(target_os = "uefi")]
 fn print_boot_error_debugcon(debugcon: &mut DebugCon, marker: &str) -> Result<(), ()> {
     writeln!(debugcon, "{BOOT_ERROR_PREFIX} {marker}").map_err(|_| ())
-}
-
-#[cfg(target_os = "uefi")]
-fn smoke_test_direct_map_page(
-    serial: &mut SerialPort,
-    allocator: &mut BitmapAllocator<'_>,
-    managed_phys_limit: u64,
-) -> Result<(), ()> {
-    const TEST_PATTERN: u64 = 0x5a17_c0de_d15e_a5e5;
-
-    let AllocationResult::Allocated(span) = allocator.allocate_page() else {
-        return Err(());
-    };
-
-    let direct_map_virt_addr =
-        VirtualAddressLayout::phys_to_direct_map_virt(span.start_phys_addr, managed_phys_limit)
-            .ok_or(())?;
-    let page_ptr = direct_map_virt_addr as *mut u64;
-    unsafe {
-        core::ptr::write_bytes(page_ptr.cast::<u8>(), 0, PAGE_SIZE);
-        core::ptr::write_volatile(page_ptr, TEST_PATTERN);
-        if core::ptr::read_volatile(page_ptr) != TEST_PATTERN {
-            return Err(());
-        }
-    }
-
-    match allocator.free_pages(span) {
-        AllocationResult::Released(_) => writeln!(
-            serial,
-            "{DIRECT_MAP_SMOKE_PREFIX} phys=0x{:016x} virt=0x{:016x}",
-            span.start_phys_addr,
-            direct_map_virt_addr
-        )
-        .map_err(|_| ()),
-        _ => Err(()),
-    }
 }
 
 #[cfg(target_os = "uefi")]

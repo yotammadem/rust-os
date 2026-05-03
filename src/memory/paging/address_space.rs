@@ -1,4 +1,6 @@
 use crate::memory::{AllocationResult, BitmapAllocator, PAGE_SIZE, PageSpan, PhysAddr};
+#[cfg(target_os = "uefi")]
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::mapper::{PagingError, map_range};
 use super::table::{
@@ -10,6 +12,8 @@ use super::table::{
 const MAX_OWNED_SPANS: usize = 256;
 const MAX_KERNEL_REGIONS: usize = 16;
 const MAX_TEMPLATE_ROOT_ENTRIES: usize = 4;
+#[cfg(target_os = "uefi")]
+static RUNTIME_PAGE_ACCESS_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AddressSpaceKind {
@@ -361,7 +365,7 @@ impl AddressSpace {
     }
 
     pub(crate) fn read_table_entry(&self, table_phys: PhysAddr, index: usize) -> u64 {
-        read_table_entry_bytes(table_phys, index)
+        read_table_entry_bytes(table_phys, index, self.managed_phys_limit)
     }
 
     pub(crate) fn write_table_entry(
@@ -373,13 +377,13 @@ impl AddressSpace {
         if index >= PAGE_TABLE_ENTRIES {
             return Err(PagingError::CapacityExceeded);
         }
-        write_table_entry_bytes(table_phys, index, value);
+        write_table_entry_bytes(table_phys, index, value, self.managed_phys_limit);
         Ok(())
     }
 
     pub(crate) fn clear_table_entry(&mut self, table_phys: PhysAddr, index: usize) {
         if index < PAGE_TABLE_ENTRIES {
-            write_table_entry_bytes(table_phys, index, 0);
+            write_table_entry_bytes(table_phys, index, 0, self.managed_phys_limit);
         }
     }
 
@@ -406,6 +410,11 @@ impl AddressSpace {
     }
 }
 
+#[cfg(target_os = "uefi")]
+pub fn set_runtime_page_access_active(active: bool) {
+    RUNTIME_PAGE_ACCESS_ACTIVE.store(active, Ordering::SeqCst);
+}
+
 fn allocate_table_span(
     allocator: &mut BitmapAllocator<'_>,
 ) -> Result<(PageSpan, PagingAllocationRecord), PagingError> {
@@ -426,14 +435,32 @@ fn zero_page_bytes(phys_addr: PhysAddr) {
 }
 
 #[cfg(target_os = "uefi")]
-fn read_table_entry_bytes(phys_addr: PhysAddr, index: usize) -> u64 {
-    unsafe { core::ptr::read_volatile((phys_addr as *const u64).add(index)) }
+fn read_table_entry_bytes(phys_addr: PhysAddr, index: usize, managed_phys_limit: PhysAddr) -> u64 {
+    let table_ptr = page_table_access_ptr(phys_addr, managed_phys_limit) as *const u64;
+    unsafe { core::ptr::read_volatile(table_ptr.add(index)) }
 }
 
 #[cfg(target_os = "uefi")]
-fn write_table_entry_bytes(phys_addr: PhysAddr, index: usize, value: u64) {
+fn write_table_entry_bytes(
+    phys_addr: PhysAddr,
+    index: usize,
+    value: u64,
+    managed_phys_limit: PhysAddr,
+) {
+    let table_ptr = page_table_access_ptr(phys_addr, managed_phys_limit) as *mut u64;
     unsafe {
-        core::ptr::write_volatile((phys_addr as *mut u64).add(index), value);
+        core::ptr::write_volatile(table_ptr.add(index), value);
+    }
+}
+
+#[cfg(target_os = "uefi")]
+fn page_table_access_ptr(phys_addr: PhysAddr, managed_phys_limit: PhysAddr) -> *mut u8 {
+    if RUNTIME_PAGE_ACCESS_ACTIVE.load(Ordering::SeqCst) {
+        VirtualAddressLayout::phys_to_direct_map_virt(phys_addr, managed_phys_limit)
+            .expect("page table must be reachable through the direct map")
+            as *mut u8
+    } else {
+        phys_addr as *mut u8
     }
 }
 
@@ -468,7 +495,7 @@ fn zero_page_bytes(phys_addr: PhysAddr) {
 }
 
 #[cfg(not(target_os = "uefi"))]
-fn read_table_entry_bytes(phys_addr: PhysAddr, index: usize) -> u64 {
+fn read_table_entry_bytes(phys_addr: PhysAddr, index: usize, _managed_phys_limit: PhysAddr) -> u64 {
     HOST_TABLE_REGISTRY.with(|registry| {
         registry
             .borrow()
@@ -479,7 +506,12 @@ fn read_table_entry_bytes(phys_addr: PhysAddr, index: usize) -> u64 {
 }
 
 #[cfg(not(target_os = "uefi"))]
-fn write_table_entry_bytes(phys_addr: PhysAddr, index: usize, value: u64) {
+fn write_table_entry_bytes(
+    phys_addr: PhysAddr,
+    index: usize,
+    value: u64,
+    _managed_phys_limit: PhysAddr,
+) {
     HOST_TABLE_REGISTRY.with(|registry| {
         let mut registry = registry.borrow_mut();
         let entries = registry

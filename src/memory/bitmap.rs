@@ -254,6 +254,32 @@ impl BitmapAllocator<'static> {
 
         Self::initialize(snapshot.regions, storage, managed_page_count, metadata_span)
     }
+
+    pub unsafe fn rebase_bootstrap_storage(&mut self, low_base: u64, high_base: u64) -> bool {
+        let Some(used_bits) = rebase_slice(self.used_bits, low_base, high_base) else {
+            return false;
+        };
+        let Some(allocatable_bits) = rebase_slice(self.allocatable_bits, low_base, high_base)
+        else {
+            return false;
+        };
+
+        self.used_bits = used_bits;
+        self.allocatable_bits = allocatable_bits;
+        true
+    }
+}
+
+fn rebase_slice(slice: &mut [u8], low_base: u64, high_base: u64) -> Option<&'static mut [u8]> {
+    let low_addr = slice.as_mut_ptr() as usize as u64;
+    let offset = low_addr.checked_sub(low_base)?;
+    let high_addr = high_base.checked_add(offset)?;
+
+    Some(unsafe {
+        // Safety: the caller guarantees that `high_base` is an alias of the same
+        // bootstrap storage, so the rebased pointer names the same bytes.
+        slice::from_raw_parts_mut(high_addr as *mut u8, slice.len())
+    })
 }
 
 fn managed_page_count(regions: &[MemoryRegion]) -> usize {
