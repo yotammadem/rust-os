@@ -200,6 +200,61 @@ impl AddressSpace {
         Ok((kernel, template))
     }
 
+    pub fn create_kernel_template_for_runtime_image(
+        allocator: &mut BitmapAllocator<'_>,
+        runtime_image_phys_start: PhysAddr,
+        runtime_image_page_count: usize,
+        transition_alias_start: PhysAddr,
+        transition_alias_page_count: usize,
+    ) -> Result<(Self, KernelMappingTemplate), PagingError> {
+        let mut kernel = Self::new_kernel(allocator)?;
+        kernel.managed_phys_limit = (allocator.managed_page_count() * PAGE_SIZE) as u64;
+
+        kernel.map_kernel_region(
+            allocator,
+            KERNEL_DIRECT_MAP_BASE,
+            0,
+            allocator.managed_page_count(),
+            EntryFlags::WRITABLE | EntryFlags::GLOBAL | EntryFlags::NO_EXECUTE,
+        )?;
+        kernel.map_kernel_region(
+            allocator,
+            KERNEL_VIRT_BASE,
+            runtime_image_phys_start,
+            runtime_image_page_count,
+            EntryFlags::WRITABLE,
+        )?;
+        kernel.map_kernel_region(
+            allocator,
+            transition_alias_start,
+            transition_alias_start,
+            transition_alias_page_count,
+            EntryFlags::WRITABLE,
+        )?;
+
+        let mut template = KernelMappingTemplate::empty();
+        template.managed_phys_limit = kernel.managed_phys_limit;
+
+        for entry in 0..PAGE_TABLE_ENTRIES {
+            let value = kernel.read_table_entry(kernel.root_table_phys_addr, entry);
+            if value == 0 || entry == KERNEL_BOOTSTRAP_ALIAS_PML4_INDEX {
+                continue;
+            }
+            if entry < VirtualAddressLayout::pml4_index(KERNEL_VIRT_BASE) {
+                continue;
+            }
+            if template.root_entry_count >= template.root_entries.len() {
+                return Err(PagingError::CapacityExceeded);
+            }
+            template.root_entries[template.root_entry_count] = Some((entry, value));
+            template.root_entry_count += 1;
+        }
+
+        template.transition_alias_start = transition_alias_start;
+        template.transition_alias_page_count = transition_alias_page_count;
+        Ok((kernel, template))
+    }
+
     pub fn from_kernel_template(
         allocator: &mut BitmapAllocator<'_>,
         template: &KernelMappingTemplate,

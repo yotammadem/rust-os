@@ -13,6 +13,8 @@ pub const EFI_ABORTED: EfiStatus = 0x8000_0000_0000_0015;
 const PE_SIGNATURE: u32 = 0x0000_4550;
 const PE32_PLUS_MAGIC: u16 = 0x20b;
 const BASE_RELOCATION_DIRECTORY_INDEX: usize = 5;
+const IMAGE_REL_BASED_ABSOLUTE: u16 = 0;
+const IMAGE_REL_BASED_DIR64: u16 = 10;
 
 const EFI_LOADER_CODE: u32 = 1;
 const EFI_LOADER_DATA: u32 = 2;
@@ -300,8 +302,11 @@ pub enum PeImageError {
     InvalidDosSignature,
     InvalidPeSignature,
     InvalidOptionalHeader,
+    InvalidRelocationBlock,
     MissingDataDirectory,
     ImageSizeOutOfRange,
+    RelocationOutOfRange,
+    UnsupportedRelocationType,
 }
 
 pub unsafe fn loaded_image_metadata(
@@ -369,6 +374,63 @@ pub fn parse_pe_image_metadata(
     })
 }
 
+pub fn apply_pe_relocations(
+    image: &mut [u8],
+    metadata: &PeImageMetadata,
+    new_base: u64,
+) -> Result<(), PeImageError> {
+    if metadata.base_relocations_size == 0 {
+        return Ok(());
+    }
+
+    let reloc_start = metadata.base_relocations_rva as usize;
+    let reloc_end = reloc_start
+        .checked_add(metadata.base_relocations_size as usize)
+        .ok_or(PeImageError::RelocationOutOfRange)?;
+    if reloc_end > image.len() {
+        return Err(PeImageError::RelocationOutOfRange);
+    }
+
+    let delta = new_base.wrapping_sub(metadata.loaded_base);
+    let mut cursor = reloc_start;
+    while cursor < reloc_end {
+        let page_rva = read_u32(image, cursor)? as usize;
+        let block_size = read_u32(image, cursor + 4)? as usize;
+        if block_size < 8 || cursor + block_size > reloc_end {
+            return Err(PeImageError::InvalidRelocationBlock);
+        }
+        if (block_size - 8) % 2 != 0 {
+            return Err(PeImageError::InvalidRelocationBlock);
+        }
+
+        let entry_count = (block_size - 8) / 2;
+        let mut entry_cursor = cursor + 8;
+        for _ in 0..entry_count {
+            let entry = read_u16(image, entry_cursor)?;
+            entry_cursor += 2;
+
+            let reloc_type = entry >> 12;
+            let offset = (entry & 0x0fff) as usize;
+            let target_offset = page_rva
+                .checked_add(offset)
+                .ok_or(PeImageError::RelocationOutOfRange)?;
+
+            match reloc_type {
+                IMAGE_REL_BASED_ABSOLUTE => {}
+                IMAGE_REL_BASED_DIR64 => {
+                    let value = read_u64(image, target_offset)?;
+                    write_u64(image, target_offset, value.wrapping_add(delta))?;
+                }
+                _ => return Err(PeImageError::UnsupportedRelocationType),
+            }
+        }
+
+        cursor += block_size;
+    }
+
+    Ok(())
+}
+
 fn read_u16(image: &[u8], offset: usize) -> Result<u16, PeImageError> {
     let bytes = image
         .get(offset..offset + 2)
@@ -390,6 +452,14 @@ fn read_u64(image: &[u8], offset: usize) -> Result<u64, PeImageError> {
     Ok(u64::from_le_bytes([
         bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
     ]))
+}
+
+fn write_u64(image: &mut [u8], offset: usize, value: u64) -> Result<(), PeImageError> {
+    let bytes = image
+        .get_mut(offset..offset + 8)
+        .ok_or(PeImageError::RelocationOutOfRange)?;
+    bytes.copy_from_slice(&value.to_le_bytes());
+    Ok(())
 }
 
 #[repr(C)]

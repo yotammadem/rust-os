@@ -1,4 +1,4 @@
-use rust_os::boot::uefi::{PeImageError, parse_pe_image_metadata};
+use rust_os::boot::uefi::{PeImageError, PeImageMetadata, apply_pe_relocations, parse_pe_image_metadata};
 
 #[test]
 fn parse_pe_image_metadata_reads_relocation_directory() {
@@ -60,4 +60,40 @@ fn parse_pe_image_metadata_rejects_missing_relocation_directory() {
         parse_pe_image_metadata(&image, 0x1000),
         Err(PeImageError::MissingDataDirectory)
     );
+}
+
+#[test]
+fn apply_pe_relocations_updates_dir64_entries_for_new_base() {
+    let mut image = vec![0u8; 0x5000];
+    let loaded_base = 0x0000_0000_0e01_a000u64;
+    let new_base = 0xffff_8000_0000_0000u64;
+
+    let target_rva = 0x1238usize;
+    let initial_value = loaded_base + 0x4567;
+    image[target_rva..target_rva + 8].copy_from_slice(&initial_value.to_le_bytes());
+
+    let block_rva = 0x3000usize;
+    image[block_rva..block_rva + 4].copy_from_slice(&(0x1000u32).to_le_bytes());
+    image[block_rva + 4..block_rva + 8].copy_from_slice(&(10u32).to_le_bytes());
+    let entry = ((10u16) << 12) | 0x238u16;
+    image[block_rva + 8..block_rva + 10].copy_from_slice(&entry.to_le_bytes());
+
+    let metadata = PeImageMetadata {
+        loaded_base,
+        loaded_size: image.len() as u64,
+        preferred_base: 0x0000_0001_4000_0000,
+        entry_point_rva: 0x1234,
+        size_of_image: image.len() as u32,
+        base_relocations_rva: block_rva as u32,
+        base_relocations_size: 10,
+    };
+
+    apply_pe_relocations(&mut image, &metadata, new_base).expect("relocation should succeed");
+
+    let relocated = u64::from_le_bytes(
+        image[target_rva..target_rva + 8]
+            .try_into()
+            .expect("8-byte relocation field"),
+    );
+    assert_eq!(relocated, new_base + 0x4567);
 }

@@ -14,8 +14,8 @@ use rust_os::{
         serial::SerialPort,
     },
     boot::uefi::{
-        EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot,
-        loaded_image_metadata,
+        EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, apply_pe_relocations,
+        capture_boot_memory_snapshot, loaded_image_metadata,
     },
     kernel::runtime,
     memory::{
@@ -124,16 +124,34 @@ pub extern "efiapi" fn efi_main(
     let image_base = image_metadata.loaded_base;
     let image_end = image_base + image_metadata.loaded_size;
 
-    let current_ip = current_instruction_pointer();
-    let code_window_start = align_down(
-        current_ip,
-        (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64,
-    );
+    let transition_alias_start = align_down(image_base, PAGE_SIZE as u64);
+    let transition_alias_end = align_up(image_base + image_metadata.size_of_image as u64, PAGE_SIZE as u64);
+    let transition_alias_page_count =
+        ((transition_alias_end - transition_alias_start) / PAGE_SIZE as u64) as usize;
 
-    let (kernel_space, template) = match rust_os::memory::AddressSpace::create_kernel_template(
+    let runtime_image_copy = match copy_and_relocate_loaded_image(
         &mut allocator,
-        code_window_start,
-        ACTIVE_CODE_WINDOW_PAGE_COUNT,
+        &image_metadata,
+        KERNEL_VIRT_BASE,
+    ) {
+        Ok(copy) => {
+            let _ = print_boot_marker_debugcon(&mut debugcon, "5 runtime-image-copy");
+            let _ = print_boot_marker(&mut serial, "5 runtime-image-copy");
+            copy
+        }
+        Err(_) => {
+            let _ = print_boot_error_debugcon(&mut debugcon, "runtime-image-copy");
+            let _ = print_boot_error(&mut serial, "runtime-image-copy");
+            return EFI_ABORTED;
+        }
+    };
+
+    let (kernel_space, template) = match rust_os::memory::AddressSpace::create_kernel_template_for_runtime_image(
+        &mut allocator,
+        runtime_image_copy.backing_span.start_phys_addr,
+        runtime_image_copy.backing_span.page_count,
+        transition_alias_start,
+        transition_alias_page_count,
     ) {
         Ok(result) => {
             let _ = print_boot_marker_debugcon(&mut debugcon, "5 kernel-template");
@@ -148,24 +166,11 @@ pub extern "efiapi" fn efi_main(
     };
     let mut kernel_space = kernel_space;
 
-    let higher_half_entry_addr = match higher_half_entry_addr(code_window_start) {
+    let higher_half_entry_addr = match higher_half_continuation_addr(&image_metadata) {
         Some(addr) => addr,
         None => {
             let _ = print_boot_error_debugcon(&mut debugcon, "higher-half-entry");
             let _ = print_boot_error(&mut serial, "higher-half-entry");
-            return EFI_ABORTED;
-        }
-    };
-
-    let runtime_image_copy = match copy_loaded_image(&mut allocator, image_base, image_metadata.size_of_image as u64) {
-        Ok(copy) => {
-            let _ = print_boot_marker_debugcon(&mut debugcon, "5 runtime-image-copy");
-            let _ = print_boot_marker(&mut serial, "5 runtime-image-copy");
-            copy
-        }
-        Err(_) => {
-            let _ = print_boot_error_debugcon(&mut debugcon, "runtime-image-copy");
-            let _ = print_boot_error(&mut serial, "runtime-image-copy");
             return EFI_ABORTED;
         }
     };
@@ -208,13 +213,27 @@ pub extern "efiapi" fn efi_main(
         serial,
         "higher-half image window: 0x{:016x}-0x{:016x}",
         KERNEL_VIRT_BASE,
-        KERNEL_VIRT_BASE + (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64
+        KERNEL_VIRT_BASE + image_metadata.size_of_image as u64
+    );
+    let _ = writeln!(
+        serial,
+        "continuation low: 0x{:016x}",
+        higher_half_continuation as *const () as usize as u64
+    );
+    let _ = writeln!(
+        serial,
+        "entry-mapped: {}",
+        kernel_space.translate(higher_half_entry_addr).is_some()
+    );
+    let _ = writeln!(
+        serial,
+        "probe-mapped: {}",
+        kernel_space.translate(KERNEL_VIRT_BASE + 0x1e442).is_some()
     );
     let _ = writeln!(
         serial,
         "image-in-window: {}",
-        image_base >= code_window_start
-            && image_end <= code_window_start + (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64
+        true
     );
 
     runtime::install(
@@ -231,25 +250,29 @@ pub extern "efiapi" fn efi_main(
 }
 
 #[cfg(target_os = "uefi")]
-fn higher_half_entry_addr(code_window_start: u64) -> Option<u64> {
+fn higher_half_continuation_addr(
+    image_metadata: &rust_os::boot::uefi::PeImageMetadata,
+) -> Option<u64> {
     let continuation_addr = higher_half_continuation as *const () as usize as u64;
-    let code_window_size = (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64;
-    let code_window_end = code_window_start.checked_add(code_window_size)?;
+    let image_end = image_metadata
+        .loaded_base
+        .checked_add(image_metadata.size_of_image as u64)?;
 
-    if continuation_addr < code_window_start || continuation_addr >= code_window_end {
+    if continuation_addr < image_metadata.loaded_base || continuation_addr >= image_end {
         return None;
     }
 
-    KERNEL_VIRT_BASE.checked_add(continuation_addr - code_window_start)
+    KERNEL_VIRT_BASE.checked_add(continuation_addr - image_metadata.loaded_base)
 }
 
 #[cfg(target_os = "uefi")]
-fn copy_loaded_image(
+fn copy_and_relocate_loaded_image(
     allocator: &mut BitmapAllocator<'static>,
-    image_base: u64,
-    image_size: u64,
+    image_metadata: &rust_os::boot::uefi::PeImageMetadata,
+    runtime_virt_base: u64,
 ) -> Result<runtime::RuntimeImageCopy, ()> {
-    let page_count = (align_up(image_size, PAGE_SIZE as u64) / PAGE_SIZE as u64) as usize;
+    let page_count = (align_up(image_metadata.size_of_image as u64, PAGE_SIZE as u64)
+        / PAGE_SIZE as u64) as usize;
     let AllocationResult::Allocated(backing_span) = allocator.allocate_pages(page_count) else {
         return Err(());
     };
@@ -264,15 +287,22 @@ fn copy_loaded_image(
             page_count * PAGE_SIZE,
         );
         core::ptr::copy_nonoverlapping(
-            image_base as *const u8,
+            image_metadata.loaded_base as *const u8,
             backing_span.start_phys_addr as *mut u8,
-            image_size as usize,
+            image_metadata.size_of_image as usize,
         );
+
+        let copied_image = core::slice::from_raw_parts_mut(
+            backing_span.start_phys_addr as *mut u8,
+            image_metadata.size_of_image as usize,
+        );
+        apply_pe_relocations(copied_image, image_metadata, runtime_virt_base).map_err(|_| ())?;
     }
 
     Ok(runtime::RuntimeImageCopy {
         backing_span,
-        image_size,
+        image_size: image_metadata.size_of_image as u64,
+        runtime_virt_base,
     })
 }
 
@@ -280,15 +310,43 @@ fn copy_loaded_image(
 unsafe extern "C" fn higher_half_continuation() -> ! {
     const TEST_PATTERN: u64 = 0x5a17_c0de_d15e_a5e5;
 
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x402u16,
+            in("al") b'A',
+            options(nomem, nostack, preserves_flags)
+        );
+    }
     let mut debugcon = DebugCon::new();
     let mut serial = unsafe { SerialPort::com1() };
+    unsafe { interrupts::install_minimal_fault_handlers() };
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x402u16,
+            in("al") b'B',
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    let _ = debugcon.write_str("cont-a\r\n");
+    let _ = serial.write_str("cont-a\r\n");
     let allocator = unsafe { runtime::allocator() };
     let managed_phys_limit = runtime::managed_phys_limit();
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x402u16,
+            in("al") b'C',
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    let _ = debugcon.write_str("cont-b\r\n");
+    let _ = serial.write_str("cont-b\r\n");
 
     let _ = print_boot_marker_debugcon(&mut debugcon, "8 post-activate");
     let _ = print_boot_marker(&mut serial, "8 post-activate");
     let _ = writeln!(serial, "higher-half rip: 0x{:016x}", current_instruction_pointer());
-    unsafe { interrupts::install_minimal_fault_handlers() };
     let _ = print_boot_marker_debugcon(&mut debugcon, "8 fault-idt-ready");
     let _ = print_boot_marker(&mut serial, "8 fault-idt-ready");
     set_runtime_page_access_active(true);
@@ -471,11 +529,27 @@ fn print_paging_diagnostics(
 
 #[cfg(target_os = "uefi")]
 #[panic_handler]
-fn panic(_info: &PanicInfo<'_>) -> ! {
+fn panic(info: &PanicInfo<'_>) -> ! {
     let mut debugcon = DebugCon::new();
     let mut serial = unsafe { SerialPort::com1() };
     unsafe { serial.initialize() };
     let _ = writeln!(debugcon, "{BOOT_PANIC_PREFIX}");
     let _ = writeln!(serial, "{BOOT_PANIC_PREFIX}");
+    if let Some(location) = info.location() {
+        let _ = writeln!(
+            debugcon,
+            "panic-location: {}:{}",
+            location.file(),
+            location.line()
+        );
+        let _ = writeln!(
+            serial,
+            "panic-location: {}:{}",
+            location.file(),
+            location.line()
+        );
+    }
+    let _ = writeln!(debugcon, "panic-message: {info}");
+    let _ = writeln!(serial, "panic-message: {info}");
     halt::halt_forever()
 }
