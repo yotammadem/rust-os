@@ -1,5 +1,6 @@
 use core::cell::UnsafeCell;
 
+use crate::arch::x86_64::paging::invalidate_tlb_page;
 use crate::memory::{AddressSpace, BitmapAllocator, KERNEL_VIRT_BASE, PagingError, PhysAddr, unmap_range};
 
 struct RuntimeState {
@@ -62,6 +63,34 @@ pub fn managed_phys_limit() -> PhysAddr {
     }
 }
 
+pub fn transition_alias_start() -> u64 {
+    unsafe {
+        (*RUNTIME_STATE.0.get())
+            .as_ref()
+            .expect("runtime state installed")
+            .transition_alias_start
+    }
+}
+
+pub fn image_addr_to_runtime_virt(addr: u64) -> Option<u64> {
+    unsafe {
+        let state = (*RUNTIME_STATE.0.get()).as_ref().expect("runtime state installed");
+        let image_size = (state.transition_alias_page_count * crate::memory::PAGE_SIZE) as u64;
+        let image_end = state.transition_alias_start.checked_add(image_size)?;
+        let runtime_image_end = KERNEL_VIRT_BASE.checked_add(image_size)?;
+
+        if addr >= KERNEL_VIRT_BASE && addr < runtime_image_end {
+            return Some(addr);
+        }
+
+        if addr < state.transition_alias_start || addr >= image_end {
+            return None;
+        }
+
+        KERNEL_VIRT_BASE.checked_add(addr - state.transition_alias_start)
+    }
+}
+
 pub unsafe fn remove_transition_alias() -> Result<(), PagingError> {
     unsafe {
         let state = (*RUNTIME_STATE.0.get())
@@ -71,6 +100,13 @@ pub unsafe fn remove_transition_alias() -> Result<(), PagingError> {
             &mut state.kernel_space,
             state.transition_alias_start,
             state.transition_alias_page_count,
-        )
+        )?;
+
+        for page in 0..state.transition_alias_page_count {
+            let virt_addr = state.transition_alias_start + (page * crate::memory::PAGE_SIZE) as u64;
+            invalidate_tlb_page(virt_addr);
+        }
+
+        Ok(())
     }
 }

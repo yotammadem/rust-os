@@ -77,6 +77,39 @@ pub struct BootServices {
         descriptor_size: *mut usize,
         descriptor_version: *mut u32,
     ) -> EfiStatus,
+    pub allocate_pool: usize,
+    pub free_pool: usize,
+    pub create_event: usize,
+    pub set_timer: usize,
+    pub wait_for_event: usize,
+    pub signal_event: usize,
+    pub close_event: usize,
+    pub check_event: usize,
+    pub install_protocol_interface: usize,
+    pub reinstall_protocol_interface: usize,
+    pub uninstall_protocol_interface: usize,
+    pub handle_protocol: unsafe extern "efiapi" fn(
+        handle: EfiHandle,
+        protocol: *const Guid,
+        interface: *mut *mut c_void,
+    ) -> EfiStatus,
+}
+
+#[repr(C)]
+pub struct LoadedImageProtocol {
+    pub revision: u32,
+    pub parent_handle: EfiHandle,
+    pub system_table: *mut SystemTable,
+    pub device_handle: EfiHandle,
+    pub file_path: *mut c_void,
+    pub reserved: *mut c_void,
+    pub load_options_size: u32,
+    pub load_options: *mut c_void,
+    pub image_base: *mut c_void,
+    pub image_size: u64,
+    pub image_code_type: u32,
+    pub image_data_type: u32,
+    pub unload: usize,
 }
 
 #[repr(C)]
@@ -210,3 +243,54 @@ fn descriptor_kind(memory_type: u32) -> RegionKind {
         _ => RegionKind::Reserved,
     }
 }
+
+pub unsafe fn loaded_image_range(
+    image_handle: EfiHandle,
+    system_table: *mut SystemTable,
+) -> Result<(u64, u64), EfiStatus> {
+    if image_handle.is_null() || system_table.is_null() {
+        return Err(EFI_ABORTED);
+    }
+
+    let boot_services = unsafe { (*system_table).boot_services };
+    if boot_services.is_null() {
+        return Err(EFI_ABORTED);
+    }
+
+    let mut interface = ptr::null_mut::<c_void>();
+    let status = unsafe {
+        ((*boot_services).handle_protocol)(
+            image_handle,
+            &EFI_LOADED_IMAGE_PROTOCOL_GUID,
+            &mut interface,
+        )
+    };
+    if status != EFI_SUCCESS || interface.is_null() {
+        return Err(if status == EFI_SUCCESS {
+            EFI_ABORTED
+        } else {
+            status
+        });
+    }
+
+    let loaded_image = unsafe { &*(interface.cast::<LoadedImageProtocol>()) };
+    let image_base = loaded_image.image_base as usize as u64;
+    let image_size = loaded_image.image_size;
+    let image_end = image_base.checked_add(image_size).ok_or(EFI_ABORTED)?;
+    Ok((image_base, image_end))
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Guid {
+    pub data1: u32,
+    pub data2: u16,
+    pub data3: u16,
+    pub data4: [u8; 8],
+}
+
+pub const EFI_LOADED_IMAGE_PROTOCOL_GUID: Guid = Guid {
+    data1: 0x5b1b31a1,
+    data2: 0x9562,
+    data3: 0x11d2,
+    data4: [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
+};

@@ -84,3 +84,10 @@ pub fn current_stack_pointer() -> u64 {
         0
     }
 }
+
+pub unsafe fn invalidate_tlb_page(virt_addr: u64) {
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::asm!("invlpg [{}]", in(reg) virt_addr, options(nostack, preserves_flags));
+    }
+}

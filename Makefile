@@ -9,6 +9,7 @@ KERNEL_EFI := target/$(TARGET)/$(PROFILE)/$(KERNEL_NAME).efi
 GRUB_EFI := $(EFI_STAGING)/EFI/BOOT/BOOTX64.EFI
 APP_EFI := $(EFI_STAGING)/EFI/BOOT/HELLO.EFI
 GRUB_MKSTANDALONE := $(shell command -v grub-mkstandalone 2>/dev/null || command -v x86_64-elf-grub-mkstandalone 2>/dev/null)
+KERNEL_SOURCES := $(shell find src asm .cargo -type f)
 
 .PHONY: build clean kernel image check-tools
 
@@ -18,7 +19,7 @@ kernel: $(KERNEL_EFI)
 
 image: $(APP_EFI)
 
-$(KERNEL_EFI): Cargo.toml rust-toolchain.toml .cargo/config.toml src/lib.rs src/main.rs src/boot/mod.rs src/boot/uefi.rs src/arch/mod.rs src/arch/x86_64/mod.rs src/arch/x86_64/framebuffer.rs src/arch/x86_64/halt.rs src/arch/x86_64/serial.rs src/kernel/mod.rs src/kernel/hello.rs src/memory/mod.rs src/memory/map.rs src/memory/bitmap.rs asm/boot.s
+$(KERNEL_EFI): Cargo.toml rust-toolchain.toml $(KERNEL_SOURCES)
 	cargo build --target $(TARGET)
 
 $(GRUB_EFI): grub/grub.cfg $(KERNEL_EFI)

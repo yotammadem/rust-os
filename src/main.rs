@@ -9,12 +9,15 @@ use core::panic::PanicInfo;
 use rust_os::{
     DIRECT_MAP_SMOKE_PREFIX, PAGING_DIAGNOSTIC_PREFIX,
     arch::x86_64::{
-        debugcon::DebugCon, halt,
+        debugcon::DebugCon, halt, interrupts,
         paging::{ActivationPlan, current_instruction_pointer},
         serial::SerialPort,
     },
-    boot::uefi::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot},
-    kernel::{hello, runtime},
+    boot::uefi::{
+        EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot,
+        loaded_image_range,
+    },
+    kernel::runtime,
     memory::{
         AllocationResult, BitmapAllocator, EntryFlags, KERNEL_VIRT_BASE, MAX_MEMORY_REGIONS,
         MemoryRegion, PAGE_SIZE, PageSpan, RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES,
@@ -44,7 +47,7 @@ fn main() {}
 #[cfg(target_os = "uefi")]
 #[unsafe(no_mangle)]
 pub extern "efiapi" fn efi_main(
-    _image_handle: EfiHandle,
+    image_handle: EfiHandle,
     system_table: *mut SystemTable,
 ) -> EfiStatus {
     let mut debugcon = DebugCon::new();
@@ -100,6 +103,24 @@ pub extern "efiapi" fn efi_main(
     }
     let _ = print_boot_marker_debugcon(&mut debugcon, "4 memory-diagnostics");
     let _ = print_boot_marker(&mut serial, "4 memory-diagnostics");
+
+    let (image_base, image_end) = match unsafe { loaded_image_range(image_handle, system_table) } {
+        Ok(range) => {
+            let _ = writeln!(
+                serial,
+                "loaded image range: 0x{:016x}-0x{:016x}",
+                range.0,
+                range.1
+            );
+            let _ = print_boot_marker_debugcon(&mut debugcon, "4 loaded-image");
+            range
+        }
+        Err(_) => {
+            let _ = print_boot_error_debugcon(&mut debugcon, "loaded-image");
+            let _ = print_boot_error(&mut serial, "loaded-image");
+            return EFI_ABORTED;
+        }
+    };
 
     let current_ip = current_instruction_pointer();
     let code_window_start = align_down(
@@ -168,6 +189,18 @@ pub extern "efiapi" fn efi_main(
     }
     let _ = print_boot_marker_debugcon(&mut debugcon, "7 pre-activate");
     let _ = print_boot_marker(&mut serial, "7 pre-activate");
+    let _ = writeln!(
+        serial,
+        "higher-half image window: 0x{:016x}-0x{:016x}",
+        KERNEL_VIRT_BASE,
+        KERNEL_VIRT_BASE + (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64
+    );
+    let _ = writeln!(
+        serial,
+        "image-in-window: {}",
+        image_base >= code_window_start
+            && image_end <= code_window_start + (ACTIVE_CODE_WINDOW_PAGE_COUNT * PAGE_SIZE) as u64
+    );
 
     runtime::install(
         kernel_space,
@@ -205,6 +238,9 @@ unsafe extern "C" fn higher_half_continuation() -> ! {
     let _ = print_boot_marker_debugcon(&mut debugcon, "8 post-activate");
     let _ = print_boot_marker(&mut serial, "8 post-activate");
     let _ = writeln!(serial, "higher-half rip: 0x{:016x}", current_instruction_pointer());
+    unsafe { interrupts::install_minimal_fault_handlers() };
+    let _ = print_boot_marker_debugcon(&mut debugcon, "8 fault-idt-ready");
+    let _ = print_boot_marker(&mut serial, "8 fault-idt-ready");
     set_runtime_page_access_active(true);
     if unsafe { runtime::remove_transition_alias() }.is_err() {
         let _ = print_boot_error_debugcon(&mut debugcon, "transition-alias-remove");
@@ -252,22 +288,12 @@ unsafe extern "C" fn higher_half_continuation() -> ! {
             halt::halt_forever();
         }
     }
-    let _ = print_boot_marker_debugcon(&mut debugcon, "9 post-direct-map-smoke");
-    let _ = print_boot_marker(&mut serial, "9 post-direct-map-smoke");
-
-    match hello::render(&mut serial) {
-        Ok(()) => {
-            let _ = print_boot_marker_debugcon(&mut debugcon, "10 hello-rendered");
-            let _ = print_boot_marker(&mut serial, "10 hello-rendered");
-        }
-        Err(_) => {
-            let _ = print_boot_error_debugcon(&mut debugcon, "hello-render");
-            let _ = print_boot_error(&mut serial, "hello-render");
-            halt::halt_forever();
-        }
+    if debugcon.write_str("boot-step: 9 invalid-opcode-proof\r\n").is_err()
+        || serial.write_str("boot-step: 9 invalid-opcode-proof\r\n").is_err()
+    {
+        halt::halt_forever();
     }
-
-    halt::halt_forever()
+    unsafe { interrupts::trigger_invalid_opcode() }
 }
 
 #[cfg(target_os = "uefi")]
