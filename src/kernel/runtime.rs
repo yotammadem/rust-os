@@ -1,6 +1,7 @@
 use core::cell::UnsafeCell;
 
 use crate::arch::x86_64::paging::invalidate_tlb_page;
+use crate::boot::uefi::PeImageMetadata;
 use crate::memory::{
     AddressSpace, BitmapAllocator, KERNEL_VIRT_BASE, PAGE_SIZE, PageSpan, PagingError, PhysAddr,
     unmap_range,
@@ -19,6 +20,7 @@ struct RuntimeState {
     transition_alias_start: u64,
     transition_alias_page_count: usize,
     runtime_image_copy: RuntimeImageCopy,
+    runtime_image_metadata: PeImageMetadata,
 }
 
 struct RuntimeStateCell(UnsafeCell<Option<RuntimeState>>);
@@ -34,6 +36,7 @@ pub fn install(
     transition_alias_start: u64,
     transition_alias_page_count: usize,
     runtime_image_copy: RuntimeImageCopy,
+    runtime_image_metadata: PeImageMetadata,
 ) {
     assert!(
         unsafe { allocator.rebase_bootstrap_storage(transition_alias_start, KERNEL_VIRT_BASE) },
@@ -49,6 +52,7 @@ pub fn install(
             transition_alias_start,
             transition_alias_page_count,
             runtime_image_copy,
+            runtime_image_metadata,
         });
     }
 }
@@ -109,6 +113,15 @@ pub fn runtime_image_copy() -> RuntimeImageCopy {
             .as_ref()
             .expect("runtime state installed")
             .runtime_image_copy
+    }
+}
+
+pub fn runtime_image_metadata() -> PeImageMetadata {
+    unsafe {
+        (*RUNTIME_STATE.0.get())
+            .as_ref()
+            .expect("runtime state installed")
+            .runtime_image_metadata
     }
 }
 

@@ -15,7 +15,7 @@ use rust_os::{
     },
     boot::uefi::{
         EFI_ABORTED, EfiHandle, EfiStatus, SystemTable, capture_boot_memory_snapshot,
-        loaded_image_range,
+        loaded_image_metadata,
     },
     kernel::runtime,
     memory::{
@@ -104,16 +104,16 @@ pub extern "efiapi" fn efi_main(
     let _ = print_boot_marker_debugcon(&mut debugcon, "4 memory-diagnostics");
     let _ = print_boot_marker(&mut serial, "4 memory-diagnostics");
 
-    let (image_base, image_end) = match unsafe { loaded_image_range(image_handle, system_table) } {
-        Ok(range) => {
+    let image_metadata = match unsafe { loaded_image_metadata(image_handle, system_table) } {
+        Ok(metadata) => {
             let _ = writeln!(
                 serial,
                 "loaded image range: 0x{:016x}-0x{:016x}",
-                range.0,
-                range.1
+                metadata.loaded_base,
+                metadata.loaded_base + metadata.loaded_size
             );
             let _ = print_boot_marker_debugcon(&mut debugcon, "4 loaded-image");
-            range
+            metadata
         }
         Err(_) => {
             let _ = print_boot_error_debugcon(&mut debugcon, "loaded-image");
@@ -121,6 +121,8 @@ pub extern "efiapi" fn efi_main(
             return EFI_ABORTED;
         }
     };
+    let image_base = image_metadata.loaded_base;
+    let image_end = image_base + image_metadata.loaded_size;
 
     let current_ip = current_instruction_pointer();
     let code_window_start = align_down(
@@ -155,7 +157,7 @@ pub extern "efiapi" fn efi_main(
         }
     };
 
-    let runtime_image_copy = match copy_loaded_image(&mut allocator, image_base, image_end - image_base) {
+    let runtime_image_copy = match copy_loaded_image(&mut allocator, image_base, image_metadata.size_of_image as u64) {
         Ok(copy) => {
             let _ = print_boot_marker_debugcon(&mut debugcon, "5 runtime-image-copy");
             let _ = print_boot_marker(&mut serial, "5 runtime-image-copy");
@@ -222,6 +224,7 @@ pub extern "efiapi" fn efi_main(
         activation_plan.transition_alias_start,
         activation_plan.transition_alias_page_count,
         runtime_image_copy,
+        image_metadata,
     );
 
     unsafe { rust_os::arch::x86_64::paging::activate(activation_plan) };

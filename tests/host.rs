@@ -2,6 +2,8 @@
 mod allocator;
 #[path = "host/boot_memory_map.rs"]
 mod boot_memory_map;
+#[path = "host/boot_pe.rs"]
+mod boot_pe;
 #[path = "host/build_artifact.rs"]
 mod build_artifact;
 #[path = "host/paging.rs"]

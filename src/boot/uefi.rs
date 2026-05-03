@@ -10,6 +10,9 @@ pub type EfiStatus = usize;
 pub const EFI_SUCCESS: EfiStatus = 0;
 pub const EFI_BUFFER_TOO_SMALL: EfiStatus = 0x8000_0000_0000_0005;
 pub const EFI_ABORTED: EfiStatus = 0x8000_0000_0000_0015;
+const PE_SIGNATURE: u32 = 0x0000_4550;
+const PE32_PLUS_MAGIC: u16 = 0x20b;
+const BASE_RELOCATION_DIRECTORY_INDEX: usize = 5;
 
 const EFI_LOADER_CODE: u32 = 1;
 const EFI_LOADER_DATA: u32 = 2;
@@ -279,6 +282,116 @@ pub unsafe fn loaded_image_range(
     let image_end = image_base.checked_add(image_size).ok_or(EFI_ABORTED)?;
     Ok((image_base, image_end))
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PeImageMetadata {
+    pub loaded_base: u64,
+    pub loaded_size: u64,
+    pub preferred_base: u64,
+    pub entry_point_rva: u32,
+    pub size_of_image: u32,
+    pub base_relocations_rva: u32,
+    pub base_relocations_size: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PeImageError {
+    BufferTooSmall,
+    InvalidDosSignature,
+    InvalidPeSignature,
+    InvalidOptionalHeader,
+    MissingDataDirectory,
+    ImageSizeOutOfRange,
+}
+
+pub unsafe fn loaded_image_metadata(
+    image_handle: EfiHandle,
+    system_table: *mut SystemTable,
+) -> Result<PeImageMetadata, EfiStatus> {
+    let (image_base, image_end) = unsafe { loaded_image_range(image_handle, system_table) }?;
+    let image_size = image_end.checked_sub(image_base).ok_or(EFI_ABORTED)?;
+    let image_bytes =
+        unsafe { core::slice::from_raw_parts(image_base as *const u8, image_size as usize) };
+    parse_pe_image_metadata(image_bytes, image_base).map_err(|_| EFI_ABORTED)
+}
+
+pub fn parse_pe_image_metadata(
+    image: &[u8],
+    loaded_base: u64,
+) -> Result<PeImageMetadata, PeImageError> {
+    if image.len() < 0x40 {
+        return Err(PeImageError::BufferTooSmall);
+    }
+    if read_u16(image, 0)? != 0x5a4d {
+        return Err(PeImageError::InvalidDosSignature);
+    }
+
+    let pe_offset = read_u32(image, 0x3c)? as usize;
+    let coff_header_offset = pe_offset
+        .checked_add(4)
+        .ok_or(PeImageError::BufferTooSmall)?;
+    let optional_header_offset = coff_header_offset
+        .checked_add(20)
+        .ok_or(PeImageError::BufferTooSmall)?;
+
+    if read_u32(image, pe_offset)? != PE_SIGNATURE {
+        return Err(PeImageError::InvalidPeSignature);
+    }
+    if read_u16(image, optional_header_offset)? != PE32_PLUS_MAGIC {
+        return Err(PeImageError::InvalidOptionalHeader);
+    }
+
+    let entry_point_rva = read_u32(image, optional_header_offset + 16)?;
+    let preferred_base = read_u64(image, optional_header_offset + 24)?;
+    let size_of_image = read_u32(image, optional_header_offset + 56)?;
+    let number_of_rva_and_sizes = read_u32(image, optional_header_offset + 108)? as usize;
+    if number_of_rva_and_sizes <= BASE_RELOCATION_DIRECTORY_INDEX {
+        return Err(PeImageError::MissingDataDirectory);
+    }
+
+    let data_directory_offset = optional_header_offset + 112;
+    let reloc_offset = data_directory_offset + (BASE_RELOCATION_DIRECTORY_INDEX * 8);
+    let base_relocations_rva = read_u32(image, reloc_offset)?;
+    let base_relocations_size = read_u32(image, reloc_offset + 4)?;
+
+    if size_of_image as usize > image.len() {
+        return Err(PeImageError::ImageSizeOutOfRange);
+    }
+
+    Ok(PeImageMetadata {
+        loaded_base,
+        loaded_size: image.len() as u64,
+        preferred_base,
+        entry_point_rva,
+        size_of_image,
+        base_relocations_rva,
+        base_relocations_size,
+    })
+}
+
+fn read_u16(image: &[u8], offset: usize) -> Result<u16, PeImageError> {
+    let bytes = image
+        .get(offset..offset + 2)
+        .ok_or(PeImageError::BufferTooSmall)?;
+    Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+}
+
+fn read_u32(image: &[u8], offset: usize) -> Result<u32, PeImageError> {
+    let bytes = image
+        .get(offset..offset + 4)
+        .ok_or(PeImageError::BufferTooSmall)?;
+    Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+fn read_u64(image: &[u8], offset: usize) -> Result<u64, PeImageError> {
+    let bytes = image
+        .get(offset..offset + 8)
+        .ok_or(PeImageError::BufferTooSmall)?;
+    Ok(u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ]))
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Guid {
