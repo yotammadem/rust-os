@@ -21,7 +21,7 @@ use rust_os::{
     memory::{
         AllocationResult, BitmapAllocator, EntryFlags, KERNEL_VIRT_BASE, MAX_MEMORY_REGIONS,
         MemoryRegion, PAGE_SIZE, PageSpan, RegionKind, UEFI_MEMORY_MAP_STORAGE_BYTES,
-        VirtualAddressLayout, align_down, set_runtime_page_access_active,
+        VirtualAddressLayout, align_down, align_up, set_runtime_page_access_active,
     },
 };
 
@@ -155,6 +155,19 @@ pub extern "efiapi" fn efi_main(
         }
     };
 
+    let runtime_image_copy = match copy_loaded_image(&mut allocator, image_base, image_end - image_base) {
+        Ok(copy) => {
+            let _ = print_boot_marker_debugcon(&mut debugcon, "5 runtime-image-copy");
+            let _ = print_boot_marker(&mut serial, "5 runtime-image-copy");
+            copy
+        }
+        Err(_) => {
+            let _ = print_boot_error_debugcon(&mut debugcon, "runtime-image-copy");
+            let _ = print_boot_error(&mut serial, "runtime-image-copy");
+            return EFI_ABORTED;
+        }
+    };
+
     let continuation_stack = match kernel_space.allocate_kernel_virtual(
         &mut allocator,
         ACTIVE_STACK_WINDOW_PAGE_COUNT,
@@ -208,6 +221,7 @@ pub extern "efiapi" fn efi_main(
         managed_phys_limit,
         activation_plan.transition_alias_start,
         activation_plan.transition_alias_page_count,
+        runtime_image_copy,
     );
 
     unsafe { rust_os::arch::x86_64::paging::activate(activation_plan) };
@@ -224,6 +238,39 @@ fn higher_half_entry_addr(code_window_start: u64) -> Option<u64> {
     }
 
     KERNEL_VIRT_BASE.checked_add(continuation_addr - code_window_start)
+}
+
+#[cfg(target_os = "uefi")]
+fn copy_loaded_image(
+    allocator: &mut BitmapAllocator<'static>,
+    image_base: u64,
+    image_size: u64,
+) -> Result<runtime::RuntimeImageCopy, ()> {
+    let page_count = (align_up(image_size, PAGE_SIZE as u64) / PAGE_SIZE as u64) as usize;
+    let AllocationResult::Allocated(backing_span) = allocator.allocate_pages(page_count) else {
+        return Err(());
+    };
+
+    unsafe {
+        // Safety: early boot still runs with the firmware-provided low mapping
+        // active, so both the loaded image bytes and the newly allocated pages
+        // are reachable through their current low physical addresses.
+        core::ptr::write_bytes(
+            backing_span.start_phys_addr as *mut u8,
+            0,
+            page_count * PAGE_SIZE,
+        );
+        core::ptr::copy_nonoverlapping(
+            image_base as *const u8,
+            backing_span.start_phys_addr as *mut u8,
+            image_size as usize,
+        );
+    }
+
+    Ok(runtime::RuntimeImageCopy {
+        backing_span,
+        image_size,
+    })
 }
 
 #[cfg(target_os = "uefi")]

@@ -1,7 +1,16 @@
 use core::cell::UnsafeCell;
 
 use crate::arch::x86_64::paging::invalidate_tlb_page;
-use crate::memory::{AddressSpace, BitmapAllocator, KERNEL_VIRT_BASE, PagingError, PhysAddr, unmap_range};
+use crate::memory::{
+    AddressSpace, BitmapAllocator, KERNEL_VIRT_BASE, PAGE_SIZE, PageSpan, PagingError, PhysAddr,
+    unmap_range,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeImageCopy {
+    pub backing_span: PageSpan,
+    pub image_size: u64,
+}
 
 struct RuntimeState {
     kernel_space: AddressSpace,
@@ -9,6 +18,7 @@ struct RuntimeState {
     managed_phys_limit: PhysAddr,
     transition_alias_start: u64,
     transition_alias_page_count: usize,
+    runtime_image_copy: RuntimeImageCopy,
 }
 
 struct RuntimeStateCell(UnsafeCell<Option<RuntimeState>>);
@@ -23,6 +33,7 @@ pub fn install(
     managed_phys_limit: PhysAddr,
     transition_alias_start: u64,
     transition_alias_page_count: usize,
+    runtime_image_copy: RuntimeImageCopy,
 ) {
     assert!(
         unsafe { allocator.rebase_bootstrap_storage(transition_alias_start, KERNEL_VIRT_BASE) },
@@ -37,6 +48,7 @@ pub fn install(
             managed_phys_limit,
             transition_alias_start,
             transition_alias_page_count,
+            runtime_image_copy,
         });
     }
 }
@@ -91,6 +103,15 @@ pub fn image_addr_to_runtime_virt(addr: u64) -> Option<u64> {
     }
 }
 
+pub fn runtime_image_copy() -> RuntimeImageCopy {
+    unsafe {
+        (*RUNTIME_STATE.0.get())
+            .as_ref()
+            .expect("runtime state installed")
+            .runtime_image_copy
+    }
+}
+
 pub unsafe fn remove_transition_alias() -> Result<(), PagingError> {
     unsafe {
         let state = (*RUNTIME_STATE.0.get())
@@ -103,7 +124,7 @@ pub unsafe fn remove_transition_alias() -> Result<(), PagingError> {
         )?;
 
         for page in 0..state.transition_alias_page_count {
-            let virt_addr = state.transition_alias_start + (page * crate::memory::PAGE_SIZE) as u64;
+            let virt_addr = state.transition_alias_start + (page * PAGE_SIZE) as u64;
             invalidate_tlb_page(virt_addr);
         }
 
