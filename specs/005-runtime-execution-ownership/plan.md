@@ -8,23 +8,24 @@
 ## Summary
 
 Replace the current bootstrap reachability workaround with a real higher-half
-continuation trampoline, delete the temporary low/current execution alias as
-soon as higher-half execution is proven, install kernel-owned GDT/IDT/TSS
-state, and switch the post-boot idle path from `cli`/`hlt` to an
-interrupt-driven `sti; hlt` flow proven by a kernel-handled hardware timer
-interrupt and a deliberate breakpoint exception.
+continuation trampoline backed by a kernel-owned copied runtime image, delete
+the temporary low/current execution alias as soon as higher-half execution is
+proven, install kernel-owned GDT/IDT/TSS state, and switch the post-boot idle
+path from `cli`/`hlt` to an interrupt-driven `sti; hlt` flow proven by a
+kernel-handled hardware timer interrupt and a deliberate synchronous
+exception.
 
 ## Technical Context
 
 **Language/Version**: Rust 2024 with `no_std` on the `x86_64-unknown-uefi` target  
 **Primary Dependencies**: No third-party code; Rust toolchain crates plus the existing GRUB and UEFI/QEMU host tooling only  
-**Storage**: N/A for persistent storage; continuation metadata, descriptor tables, interrupt tables, and bootstrap stacks live in RAM  
+**Storage**: N/A for persistent storage; continuation metadata, copied runtime image pages, descriptor tables, interrupt tables, and bootstrap stacks live in RAM  
 **Testing**: `cargo test`, `cargo check --target x86_64-unknown-uefi`, `make build`, and `./run.sh` with transcript inspection  
 **Target Platform**: x86_64 UEFI kernel booted through GRUB in QEMU on macOS  
 **Project Type**: Bare-metal operating system kernel bootstrap, paging handoff, and early interrupt-ownership work  
 **Performance Goals**: Keep the continuation handoff bounded to a constant number of page-table and register transitions, keep alias teardown immediate after higher-half confirmation, and keep idle wakeup latency low enough to observe repeated timer-driven wakeups in QEMU without reset or stall  
 **Constraints**: No new dependencies, single-processor boot only, 4 KiB pages only, no user mode yet, no APIC or SMP bring-up in this milestone, and any assembly or `unsafe` must stay narrowly contained in architecture-owned modules  
-**Scale/Scope**: One kernel runtime root, one higher-half continuation trampoline, one temporary alias teardown path, one kernel-owned GDT/IDT/TSS installation path, one hardware timer interrupt source, one deliberate breakpoint proof path, and one stable interrupt-driven idle loop
+**Scale/Scope**: One kernel runtime root, one copied and relocated higher-half runtime image, one higher-half continuation trampoline, one temporary alias teardown path, one kernel-owned GDT/IDT/TSS installation path, one hardware timer interrupt source, one deliberate synchronous exception proof path, and one stable interrupt-driven idle loop
 
 ## Constitution Check
 
@@ -39,7 +40,7 @@ interrupt and a deliberate breakpoint exception.
 Post-design re-check: Passed. The design keeps the zero-dependency policy,
 limits assembly and `unsafe` to hardware-owned boundaries, and defines a
 reproducible boot transcript for continuation, alias removal, owned interrupt
-state, breakpoint handling, and interrupt-driven idle.
+state, synchronous exception handling, and interrupt-driven idle.
 
 ## Project Structure
 
@@ -112,51 +113,63 @@ grub/
 ```
 
 **Structure Decision**: Keep higher-half address-space construction in
-`src/memory/paging/`, but move all continuation, descriptor-table ownership,
+`src/memory/paging/`, keep PE image discovery and relocation parsing in
+`src/boot/uefi.rs`, and move all continuation, descriptor-table ownership,
 interrupt entry, PIC/PIT programming, and idle wakeup behavior into
-`src/arch/x86_64/`. Boot orchestration and transcript markers remain in
-`src/main.rs`, while transcript-based proof stays in `tests/e2e_boot_serial.py`
-and new host-side invariants live under `tests/host/`.
+`src/arch/x86_64/`. Boot orchestration, runtime-image copy publication, and
+transcript markers remain in `src/main.rs`, while transcript-based proof stays
+in `tests/e2e_boot_serial.py` and new host-side invariants live under
+`tests/host/`.
 
 ## Phase 0: Research Summary
 
 - Use an explicit higher-half continuation trampoline rather than preserving the
   live low execution window.
+- Replace the current higher-half alias of the UEFI-loaded image with a copied
+  and relocated kernel-owned runtime image so relocation-sensitive metadata
+  such as vtables and formatter callbacks resolve inside the higher-half image
+  after alias removal.
 - Tear down the transition alias immediately after the first confirmed
   higher-half instruction and flush the alias translations before continuing.
 - Install a minimal kernel-owned execution context: flat kernel GDT, one TSS,
   one bootstrap IST-capable stack policy, and an IDT that proves ownership via
-  a timer IRQ and a breakpoint exception.
+  a timer IRQ and a deliberate synchronous exception.
 - Use the legacy PIC + PIT path for the first hardware timer wakeup because it
   is the smallest interrupt source already available under QEMU without APIC
   bring-up.
 - Validate owned runtime state through transcript markers that distinguish
-  higher-half entry, alias teardown, descriptor installation, breakpoint
-  handling, timer wakeup, and steady idle.
+  higher-half entry, alias teardown, descriptor installation, synchronous
+  exception handling, timer wakeup, and steady idle.
 
 ## Phase 1: Design Artifacts
 
-- `research.md`: Captures the continuation, alias-teardown, descriptor-state,
-  timer-source, and idle-path decisions with rejected alternatives.
+- `research.md`: Captures the continuation, alias-teardown, runtime-image
+  relocation, descriptor-state, timer-source, and idle-path decisions with
+  rejected alternatives.
 - `data-model.md`: Defines the continuation window, alias-removal contract,
-  kernel execution context, interrupt proof events, and idle lifecycle states.
+  runtime execution image, kernel execution context, interrupt proof events,
+  and idle lifecycle states.
 - `contracts/runtime-execution-interface.md`: Defines observable runtime
-  behavior for continuation, alias teardown, interrupt ownership, breakpoint
-  handling, and timer-driven idle wakeups.
+  behavior for continuation, alias teardown, runtime-image ownership,
+  interrupt ownership, synchronous exception handling, and timer-driven idle
+  wakeups.
 - `quickstart.md`: Documents host validation, boot validation, expected
   transcript markers, and failure expectations for this feature.
 
 ## Implementation Notes
 
-- `src/main.rs` will stop mapping the current low instruction and stack windows
-  as a general workaround and instead hand an explicit continuation target and
-  bootstrap stack contract into the architecture layer.
+- `src/main.rs` will stop relying on a higher-half alias of the UEFI-loaded
+  image and instead copy and relocate a kernel-owned runtime image before
+  handing an explicit continuation target and bootstrap stack contract into the
+  architecture layer.
+- `src/boot/uefi.rs` will provide the loaded image range and relocation
+  metadata needed to build the copied runtime image.
 - `src/arch/x86_64/paging.rs` will grow from a raw CR3 loader into the owned
   continuation entry point that activates the runtime root and transfers
   execution to the higher half.
 - `src/arch/x86_64/gdt.rs`, `idt.rs`, and `interrupts.rs` will own descriptor
   publication, handler registration, and proof paths for the timer IRQ and the
-  breakpoint exception.
+  deliberate synchronous exception.
 - `src/arch/x86_64/timer.rs` will program the legacy timer source and deliver an
   interrupt path compatible with the early kernel-owned IDT.
 - `asm/boot.s` may remain the home for any minimal naked stubs that cannot be
@@ -166,8 +179,10 @@ and new host-side invariants live under `tests/host/`.
 ## Complexity Tracking
 
 No constitution violations are expected. The main complexity is that this
-feature touches the two most fragile ownership boundaries in the current boot
-path at once: the first instruction after `mov cr3`, and the first interrupt
-after the kernel stops relying on firmware state. The design therefore keeps the
-proof surface intentionally narrow: one continuation jump, one alias-removal
-moment, one breakpoint proof, one timer IRQ proof, and one stable idle loop.
+feature touches the three most fragile ownership boundaries in the current boot
+path at once: the first instruction after `mov cr3`, the first relocation-
+sensitive metadata access after alias removal, and the first interrupt after
+the kernel stops relying on firmware state. The design therefore keeps the
+proof surface intentionally narrow: one copied-image continuation jump, one
+alias-removal moment, one deliberate synchronous exception proof, one timer IRQ
+proof, and one stable idle loop.

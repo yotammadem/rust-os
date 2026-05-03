@@ -30,6 +30,7 @@
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
 - [ ] T004 Define higher-half continuation and alias-teardown metadata in `src/arch/x86_64/paging.rs`
+- [ ] T004A Define runtime-image relocation metadata and loaded-image ownership boundaries in `src/boot/uefi.rs` and `src/kernel/runtime.rs`
 - [ ] T005 [P] Add shared descriptor-table and trap-frame types in `src/arch/x86_64/gdt.rs`
 - [ ] T006 [P] Add shared IDT vector and handler registration types in `src/arch/x86_64/idt.rs`
 - [ ] T007 [P] Add shared PIC/PIT timer control and IRQ constants in `src/arch/x86_64/timer.rs`
@@ -49,15 +50,16 @@
 ### Validation for User Story 1 ⚠️
 
 - [ ] T010 [P] [US1] Add Rust tests for continuation-plan and alias-removal invariants in `tests/host/paging.rs`
+- [ ] T010A [P] [US1] Add Rust tests for runtime-image rebasing and relocation invariants in `tests/host/paging.rs`
 - [ ] T011 [US1] Define higher-half continuation and alias-removal boot validation in `specs/005-runtime-execution-ownership/quickstart.md`
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Extend transition-alias mapping and teardown support in `src/memory/paging/address_space.rs`
-- [ ] T013 [P] [US1] Implement deterministic continuation-plan construction in `src/arch/x86_64/paging.rs`
-- [ ] T014 [US1] Add the continuation entry and post-switch jump stub in `asm/boot.s`
-- [ ] T015 [US1] Integrate the higher-half continuation flow and alias-removal markers in `src/main.rs`
-- [ ] T016 [US1] Document the continuation and alias-removal unsafe boundary in `src/arch/x86_64/paging.rs`
+- [ ] T012 [P] [US1] Extend transition-alias mapping, teardown, and TLB invalidation support in `src/memory/paging/address_space.rs`, `src/kernel/runtime.rs`, and `src/arch/x86_64/paging.rs`
+- [ ] T013 [P] [US1] Implement deterministic continuation-plan construction for a copied runtime image in `src/arch/x86_64/paging.rs` and `src/main.rs`
+- [ ] T014 [US1] Add runtime-image copy and PE relocation support for the higher-half execution image in `src/boot/uefi.rs`, `src/kernel/runtime.rs`, and `src/main.rs`
+- [ ] T015 [US1] Integrate the higher-half continuation flow, owned runtime image handoff, and immediate low-alias removal markers in `src/main.rs`
+- [ ] T016 [US1] Document the continuation, runtime-image relocation, and alias-removal unsafe boundaries in `src/arch/x86_64/paging.rs` and `specs/005-runtime-execution-ownership/contracts/runtime-execution-interface.md`
 
 **Checkpoint**: User Story 1 should boot through the runtime root, continue in the higher half, and run without the temporary low/current alias
 
@@ -65,26 +67,26 @@
 
 ## Phase 4: User Story 2 - Own Execution Context (Priority: P2)
 
-**Goal**: Replace firmware-owned descriptor and interrupt state with kernel-owned GDT, IDT, TSS, a breakpoint proof path, and a hardware timer IRQ path
+**Goal**: Replace firmware-owned descriptor and interrupt state with kernel-owned GDT, IDT, TSS, a deliberate synchronous proof path, and a hardware timer IRQ path
 
-**Independent Test**: Boot in QEMU, install kernel-owned GDT/IDT/TSS state, trigger a deliberate breakpoint exception, handle a hardware timer interrupt, and prove both paths stay under kernel control
+**Independent Test**: Boot in QEMU, install kernel-owned GDT/IDT/TSS state, trigger a deliberate synchronous exception, handle a hardware timer interrupt, and prove both paths stay under kernel control
 
 ### Validation for User Story 2 ⚠️
 
 - [ ] T017 [P] [US2] Add Rust tests for descriptor ownership and interrupt proof metadata in `tests/host/paging.rs`
-- [ ] T018 [US2] Define breakpoint and timer proof-path validation in `specs/005-runtime-execution-ownership/quickstart.md`
+- [ ] T018 [US2] Define synchronous-exception and timer proof-path validation in `specs/005-runtime-execution-ownership/quickstart.md`
 
 ### Implementation for User Story 2
 
 - [ ] T019 [P] [US2] Implement the kernel-owned GDT and TSS setup in `src/arch/x86_64/gdt.rs`
 - [ ] T020 [P] [US2] Implement the kernel-owned IDT and vector installation in `src/arch/x86_64/idt.rs`
-- [ ] T021 [P] [US2] Implement breakpoint and timer interrupt handlers plus acknowledgement flow in `src/arch/x86_64/interrupts.rs`
+- [ ] T021 [P] [US2] Implement synchronous-exception and timer interrupt handlers plus acknowledgement flow in `src/arch/x86_64/interrupts.rs`
 - [ ] T022 [P] [US2] Program the legacy PIC and PIT timer path in `src/arch/x86_64/timer.rs`
 - [ ] T023 [US2] Add interrupt-entry stubs and return-sensitive assembly only where required in `asm/boot.s`
 - [ ] T024 [US2] Integrate execution-context installation and proof markers in `src/main.rs`
 - [ ] T025 [US2] Document descriptor, interrupt, and timer unsafe invariants in `src/arch/x86_64/interrupts.rs`
 
-**Checkpoint**: User Stories 1 and 2 should boot with kernel-owned descriptor state and prove both breakpoint and timer handling without firmware-owned fallback
+**Checkpoint**: User Stories 1 and 2 should boot with kernel-owned descriptor state and prove both a deliberate synchronous exception and timer handling without firmware-owned fallback
 
 ---
 
@@ -160,12 +162,12 @@
 ```bash
 # Launch validation preparation together:
 Task: "Add Rust tests for descriptor ownership and interrupt proof metadata in tests/host/paging.rs"
-Task: "Define breakpoint and timer proof-path validation in specs/005-runtime-execution-ownership/quickstart.md"
+Task: "Define synchronous-exception and timer proof-path validation in specs/005-runtime-execution-ownership/quickstart.md"
 
 # Launch core implementation work together:
 Task: "Implement the kernel-owned GDT and TSS setup in src/arch/x86_64/gdt.rs"
 Task: "Implement the kernel-owned IDT and vector installation in src/arch/x86_64/idt.rs"
-Task: "Implement breakpoint and timer interrupt handlers plus acknowledgement flow in src/arch/x86_64/interrupts.rs"
+Task: "Implement synchronous-exception and timer interrupt handlers plus acknowledgement flow in src/arch/x86_64/interrupts.rs"
 Task: "Program the legacy PIC and PIT timer path in src/arch/x86_64/timer.rs"
 ```
 
@@ -201,5 +203,5 @@ Task: "Program the legacy PIC and PIT timer path in src/arch/x86_64/timer.rs"
 - [P] tasks = different files, no dependencies
 - [Story] labels map tasks to specific user stories for traceability
 - Each user story is independently completable and testable at its checkpoint
-- Validation, assembly, and unsafe-boundary tasks are included because they are core to this feature
+- Validation, runtime-image relocation, assembly, and unsafe-boundary tasks are included because they are core to this feature
 - Avoid carrying the temporary low/current execution alias or blanket `cli` workaround past the story that removes them

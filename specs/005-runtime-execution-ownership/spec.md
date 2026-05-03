@@ -15,22 +15,22 @@
 - Q: What runtime event must prove the kernel owns post-handoff idle wakeups? → A: A kernel-handled hardware timer interrupt
 - Q: What minimum handler coverage proves kernel-owned execution context in this feature? → A: Hardware timer interrupt plus one deliberate synchronous exception path
 - Q: When should the temporary low/current execution alias be removed? → A: Immediately after the first confirmed higher-half continuation step
-- Q: Which synchronous exception path should prove kernel-owned exception handling? → A: A deliberate breakpoint exception
+- Q: Which synchronous exception path should prove kernel-owned exception handling? → A: One deliberate kernel-triggered synchronous exception that executes entirely under kernel-owned state
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Continue In The Higher Half (Priority: P1)
 
-As a kernel developer, I want the kernel to resume execution at a stable higher-half continuation point after the runtime paging switch so the boot flow no longer depends on a temporary low execution window.
+As a kernel developer, I want the kernel to resume execution from a kernel-owned higher-half runtime image after the paging switch so the boot flow no longer depends on either a temporary low execution window or low-image-relocated runtime metadata.
 
-**Why this priority**: The current runtime handoff works only because it preserves the live low execution window. That is a bootstrap workaround, not the intended kernel runtime state.
+**Why this priority**: The current runtime handoff works only because it preserves the live low execution window and aliases the UEFI-loaded image into the higher half. That is a bootstrap workaround, not the intended kernel runtime state.
 
 **Independent Test**: Can be fully tested by booting in QEMU, switching to the runtime root, reaching the higher-half continuation path, and proving that serial output still appears after the temporary low execution alias is removed.
 
 **Acceptance Scenarios**:
 
-1. **Given** the kernel has built a runtime paging root, **When** it activates that root, **Then** execution continues from a known higher-half continuation point instead of relying on the current low execution window.
-2. **Given** the first higher-half continuation step has been confirmed, **When** the kernel immediately removes the temporary low execution alias, **Then** the system continues running and still emits the expected post-switch serial output.
+1. **Given** the kernel has built a runtime paging root and a kernel-owned copied runtime image, **When** it activates that root, **Then** execution continues from a known higher-half continuation point in that copied runtime image instead of relying on the current low execution window or on the original UEFI-loaded image placement.
+2. **Given** the first higher-half continuation step has been confirmed, **When** the kernel immediately removes the temporary low execution alias, **Then** the system continues running and still emits the expected post-switch serial output without depending on low-image-relocated code or metadata.
 
 ---
 
@@ -74,14 +74,16 @@ As a kernel developer, I want the post-boot kernel to enter an interrupt-safe id
 ### Functional Requirements
 
 - **FR-001**: The system MUST resume execution at a deterministic higher-half continuation point immediately after activating the runtime paging root.
-- **FR-002**: The system MUST preserve the code, stack, and immediate runtime data needed to survive the paging-root switch until the higher-half continuation path is active.
+- **FR-002**: The system MUST preserve the code, stack, immediate runtime data, and runtime-image metadata needed to survive the paging-root switch until the higher-half continuation path is active.
 - **FR-003**: The system MUST remove the temporary low/current execution alias after higher-half execution is established successfully.
 - **FR-013**: The system MUST remove the temporary low/current execution alias immediately after the first confirmed higher-half continuation step and MUST NOT retain it for later execution-context or idle milestones.
 - **FR-004**: The system MUST reject or abort the handoff if the higher-half continuation point, required stack state, or immediate runtime data would become unreachable during the transition.
+- **FR-015**: The system MUST execute post-switch runtime code from a kernel-owned higher-half runtime image whose embedded absolute pointers and relocation-sensitive metadata are consistent with the higher-half runtime base.
+- **FR-016**: The system MUST NOT continue post-switch runtime execution from a mere higher-half alias of the UEFI-loaded image once low-image-relocated metadata would remain observable after alias removal.
 - **FR-005**: The runtime kernel MUST install and use kernel-owned execution-context state for post-switch runtime handling instead of relying on inherited firmware-owned state.
 - **FR-006**: The system MUST ensure that post-switch interrupt, exception, and privileged runtime handling reaches kernel-owned control paths once that execution-context ownership step is complete.
 - **FR-012**: Validation of kernel-owned execution-context installation MUST include both a hardware timer interrupt path and at least one deliberate synchronous exception path handled under kernel-owned state.
-- **FR-014**: The required deliberate synchronous exception proof path for this feature MUST be a kernel-triggered breakpoint exception handled under kernel-owned execution state.
+- **FR-014**: The required deliberate synchronous exception proof path for this feature MUST be a kernel-triggered synchronous exception handled entirely under kernel-owned execution state.
 - **FR-007**: The post-boot kernel MUST provide an idle behavior that remains stable without depending on a blanket interrupt-disable workaround as its long-term runtime behavior.
 - **FR-008**: The system MUST remain under kernel control after entering idle and MUST NOT reset or reboot as a result of expected post-boot runtime events.
 - **FR-011**: The stable idle behavior MUST be an interrupt-driven path that executes with interrupts enabled and resumes through a kernel-owned hardware timer interrupt handler.
@@ -99,6 +101,7 @@ As a kernel developer, I want the post-boot kernel to enter an interrupt-safe id
 ### Key Entities *(include if feature involves data)*
 
 - **HigherHalfContinuationWindow**: The executable and stack-reachable runtime window that remains valid during the moment of paging-root activation and leads into the higher-half continuation point.
+- **RuntimeExecutionImage**: The kernel-owned copied and relocated image instance used for post-switch execution in the higher half, including any relocation-sensitive code and metadata.
 - **TemporaryExecutionAlias**: The short-lived low/current execution mapping retained only long enough to survive the handoff and removed once higher-half execution is proven stable.
 - **KernelExecutionContext**: The kernel-owned descriptor, interrupt, exception, and stack-transition state used after the runtime handoff.
 - **KernelIdleState**: The stable post-boot processor state entered after the runtime handoff and execution-context ownership steps are complete.
@@ -108,23 +111,23 @@ As a kernel developer, I want the post-boot kernel to enter an interrupt-safe id
 ### Measurable Outcomes
 
 - **SC-001**: In repeated QEMU boots, the kernel reaches the higher-half continuation path and emits the expected post-switch serial transcript without depending on the preserved current low execution window.
-- **SC-002**: In repeated QEMU boots, removing the temporary low/current execution alias immediately after the first confirmed higher-half continuation step does not prevent the kernel from continuing to run and emit the expected post-removal transcript markers.
+- **SC-002**: In repeated QEMU boots, removing the temporary low/current execution alias immediately after the first confirmed higher-half continuation step does not prevent the kernel from continuing to run and emit the expected post-removal transcript markers, including formatter or indirect-dispatch paths that would otherwise expose low-image-relocated metadata.
 - **SC-003**: In repeated validation runs, the system remains under kernel-owned execution control after the runtime handoff and does not fall back to firmware-owned runtime handling.
 - **SC-006**: In repeated QEMU validation runs, both a hardware timer interrupt and at least one deliberate synchronous exception complete through kernel-owned handlers after the runtime handoff.
-- **SC-007**: In repeated QEMU validation runs, a deliberate breakpoint exception completes through a kernel-owned handler after the runtime handoff.
+- **SC-007**: In repeated QEMU validation runs, a deliberate kernel-triggered synchronous exception completes through a kernel-owned handler after the runtime handoff.
 - **SC-004**: After entering the post-boot idle path, the system remains stable without rebooting or resetting during the validation window while using an interrupt-enabled `hlt` wakeup path.
 - **SC-005**: In repeated QEMU validation runs, a hardware timer interrupt wakes the idle kernel through a kernel-owned handler path after the runtime handoff.
 
 ## Assumptions
 
-- The current live runtime paging handoff and direct-map proof from feature `004-live-vm-handoff` remain the substrate for this follow-on feature.
+- The current live runtime paging handoff and direct-map proof from feature `004-live-vm-handoff` remain the substrate for this follow-on feature, but the final runtime image may need to diverge from the original UEFI-loaded image placement.
 - Single-processor boot remains the scope for this feature; multiprocessor coordination is still out of scope.
 - User mode, scheduler bring-up, and demand paging remain out of scope; this feature only establishes the kernel-owned runtime foundation needed before those later milestones.
 - Serial transcript output remains the primary externally visible proof path for continuation, alias removal, execution-context ownership, and stable idle behavior.
 
 ## Low-Level Impact *(mandatory)*
 
-- **Architecture Impact**: Affects CR3 handoff flow, higher-half continuation, low alias removal, descriptor and interrupt ownership, and the post-boot idle path on x86_64.
+- **Architecture Impact**: Affects CR3 handoff flow, runtime-image relocation and ownership, higher-half continuation, low alias removal, descriptor and interrupt ownership, and the post-boot idle path on x86_64.
 - **Dependency Impact**: No new dependencies.
 - **Assembly Impact**: Expected in the continuation trampoline and possibly in execution-context or idle-transition touchpoints where Rust alone cannot express the required processor-state transitions safely.
 - **Unsafe Impact**: Expected around continuation publication, descriptor and interrupt state installation, privileged register updates, and any stack-sensitive runtime transition code.
