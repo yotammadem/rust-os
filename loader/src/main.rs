@@ -2,18 +2,13 @@
 #![cfg_attr(target_os = "uefi", no_main)]
 
 #[cfg(target_os = "uefi")]
-mod arch;
-#[cfg(target_os = "uefi")]
-mod boot;
-#[cfg(target_os = "uefi")]
-mod kernel;
-
-#[cfg(target_os = "uefi")]
-use arch::x86_64::{halt, serial::SerialPort};
-#[cfg(target_os = "uefi")]
-use boot::multiboot::{EfiHandle, EfiStatus, SystemTable};
-#[cfg(target_os = "uefi")]
 use core::panic::PanicInfo;
+#[cfg(target_os = "uefi")]
+use rust_os::LOADER_SERIAL_BANNER;
+#[cfg(target_os = "uefi")]
+use rust_os::arch::x86_64::{halt, serial::SerialPort};
+#[cfg(target_os = "uefi")]
+use rust_os::boot::multiboot::{EfiHandle, EfiStatus, SystemTable};
 
 #[cfg(not(target_os = "uefi"))]
 fn main() {}
@@ -25,12 +20,7 @@ pub extern "efiapi" fn efi_main(
     _system_table: *mut SystemTable,
 ) -> EfiStatus {
     let mut serial = unsafe { SerialPort::com1() };
-
-    match kernel::hello::render(&mut serial) {
-        Ok(()) => {}
-        Err(status) => return status,
-    }
-
+    serial.write_bytes(LOADER_SERIAL_BANNER);
     halt::halt_forever()
 }
 

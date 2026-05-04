@@ -1,4 +1,4 @@
-use rust_os::{HELLO_WORLD, HELLO_WORLD_SERIAL};
+use rust_os::{HELLO_WORLD, KERNEL_SERIAL_BANNER, LOADER_SERIAL_BANNER};
 
 #[test]
 fn visible_message_matches_spec() {
@@ -6,6 +6,7 @@ fn visible_message_matches_spec() {
 }
 
 #[test]
-fn serial_message_has_expected_wire_format() {
-    assert_eq!(HELLO_WORLD_SERIAL, b"hello world\r\n");
+fn serial_messages_have_expected_wire_format() {
+    assert_eq!(LOADER_SERIAL_BANNER, b"hello world\r\n");
+    assert_eq!(KERNEL_SERIAL_BANNER, b"kernel stub\r\n");
 }

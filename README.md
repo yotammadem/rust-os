@@ -1,8 +1,10 @@
 # rust-os
 
 `rust-os` is a pure-Rust operating system project with a minimal boot chain based
-on GRUB. The current baseline boots a UEFI image in QEMU, prints `hello world`,
-and halts.
+on GRUB. The current baseline boots a UEFI image in QEMU, chainloads a dedicated
+loader EFI application, prints `hello world` over serial, and halts. A separate
+kernel EFI application is also built and linked into the higher half in
+preparation for the paging and handoff work.
 
 ## Status
 
@@ -36,6 +38,8 @@ run.sh
 grub/
 linker/
 asm/
+loader/
+kernel/
 src/
 tests/
 specs/

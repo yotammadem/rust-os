@@ -1,37 +1,45 @@
 SHELL := /bin/zsh
 
 TARGET := x86_64-unknown-uefi
+KERNEL_TARGET := x86_64-unknown-none
 PROFILE ?= debug
-KERNEL_NAME := hello-boot
 BUILD_DIR := .build
 EFI_STAGING := $(BUILD_DIR)/efi
 IMAGE := bin/hello-boot.img
-KERNEL_EFI := target/$(TARGET)/$(PROFILE)/$(KERNEL_NAME).efi
+LOADER_EFI := target/$(TARGET)/$(PROFILE)/loader.efi
+KERNEL_IMAGE := target/$(KERNEL_TARGET)/$(PROFILE)/kernel
 GRUB_EFI := $(EFI_STAGING)/EFI/BOOT/BOOTX64.EFI
-APP_EFI := $(EFI_STAGING)/EFI/BOOT/HELLO.EFI
+LOADER_APP_EFI := $(EFI_STAGING)/EFI/BOOT/LOADER.EFI
+KERNEL_APP_IMAGE := $(EFI_STAGING)/EFI/BOOT/KERNEL.BIN
 GRUB_MKSTANDALONE := $(shell command -v grub-mkstandalone 2>/dev/null || command -v x86_64-elf-grub-mkstandalone 2>/dev/null)
 
-.PHONY: build clean kernel image check-tools
+.PHONY: build clean loader kernel image check-tools
 
 build: $(IMAGE)
 
-kernel: $(KERNEL_EFI)
+loader: $(LOADER_EFI)
+
+kernel: $(KERNEL_IMAGE)
 
 image: $(IMAGE)
 
-$(KERNEL_EFI): Cargo.toml rust-toolchain.toml .cargo/config.toml src/lib.rs src/main.rs src/boot/mod.rs src/boot/multiboot.rs src/arch/x86_64/mod.rs src/arch/x86_64/serial.rs src/arch/x86_64/halt.rs src/kernel/mod.rs src/kernel/hello.rs asm/boot.s
-	cargo build --target $(TARGET)
+$(LOADER_EFI): Cargo.toml loader/Cargo.toml loader/build.rs loader/src/main.rs rust-toolchain.toml .cargo/config.toml src/lib.rs src/boot/mod.rs src/boot/multiboot.rs src/arch/mod.rs src/arch/x86_64/mod.rs src/arch/x86_64/serial.rs src/arch/x86_64/halt.rs linker/loader.ld asm/boot.s
+	cargo build --manifest-path loader/Cargo.toml --target $(TARGET)
 
-$(GRUB_EFI): grub/grub.cfg $(KERNEL_EFI)
+$(KERNEL_IMAGE): Cargo.toml kernel/Cargo.toml kernel/build.rs kernel/src/main.rs rust-toolchain.toml .cargo/config.toml src/lib.rs src/arch/mod.rs src/arch/x86_64/mod.rs src/arch/x86_64/serial.rs src/arch/x86_64/halt.rs linker/kernel.ld asm/boot.s
+	cargo build --manifest-path kernel/Cargo.toml --target $(KERNEL_TARGET)
+
+$(GRUB_EFI): grub/grub.cfg $(LOADER_EFI)
 	@test -n "$(GRUB_MKSTANDALONE)" || { echo "missing grub-mkstandalone; install GRUB host tooling first"; exit 1; }
 	@mkdir -p $(dir $(GRUB_EFI))
 	$(GRUB_MKSTANDALONE) -O x86_64-efi -o $(GRUB_EFI) \
 		"boot/grub/grub.cfg=grub/grub.cfg" \
-		"EFI/BOOT/HELLO.EFI=$(KERNEL_EFI)"
+		"EFI/BOOT/LOADER.EFI=$(LOADER_EFI)"
 
-$(IMAGE): $(KERNEL_EFI) $(GRUB_EFI)
+$(IMAGE): $(LOADER_EFI) $(KERNEL_IMAGE) $(GRUB_EFI)
 	@mkdir -p bin $(EFI_STAGING)/EFI/BOOT
-	cp $(KERNEL_EFI) $(APP_EFI)
+	cp $(LOADER_EFI) $(LOADER_APP_EFI)
+	cp $(KERNEL_IMAGE) $(KERNEL_APP_IMAGE)
 	rm -f $(IMAGE)
 	dd if=/dev/zero of=$(IMAGE) bs=1m count=64
 	@DEV=$$(hdiutil attach -imagekey diskimage-class=CRawDiskImage -nomount $(IMAGE) | awk '/^\/dev\// { print $$1; exit }'); \
@@ -43,7 +51,8 @@ $(IMAGE): $(KERNEL_EFI) $(GRUB_EFI)
 		if [ -z "$$MOUNT_POINT" ]; then echo "failed to mount EFI partition"; hdiutil detach $$DEV >/dev/null; exit 1; fi; \
 		mkdir -p $$MOUNT_POINT/EFI/BOOT; \
 		cp $(GRUB_EFI) $$MOUNT_POINT/EFI/BOOT/BOOTX64.EFI; \
-		cp $(APP_EFI) $$MOUNT_POINT/EFI/BOOT/HELLO.EFI; \
+		cp $(LOADER_APP_EFI) $$MOUNT_POINT/EFI/BOOT/LOADER.EFI; \
+		cp $(KERNEL_APP_IMAGE) $$MOUNT_POINT/EFI/BOOT/KERNEL.BIN; \
 		hdiutil detach $$DEV >/dev/null
 
 clean:

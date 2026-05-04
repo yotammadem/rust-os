@@ -4,15 +4,12 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[workspace]
+members = ["loader", "kernel"]
+
 [lib]
 name = "rust_os"
 path = "src/lib.rs"
-
-[[bin]]
-name = "hello-boot"
-path = "src/main.rs"
-test = false
-bench = false
 
 [profile.dev]
 panic = "abort"
