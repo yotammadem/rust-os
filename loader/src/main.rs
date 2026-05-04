@@ -4,12 +4,14 @@
 #[cfg(target_os = "uefi")]
 mod bootinfo;
 #[cfg(target_os = "uefi")]
+mod elf;
+#[cfg(target_os = "uefi")]
 mod kernel_image;
 #[cfg(target_os = "uefi")]
 mod memory;
 
 #[cfg(target_os = "uefi")]
-use self::kernel_image::{LoadError, LoadedKernelImage};
+use self::kernel_image::{LoadError, LoadedKernelImage, LoadedSegment};
 #[cfg(target_os = "uefi")]
 use self::memory::{EarlyLayout, PhysicalRange};
 #[cfg(target_os = "uefi")]
@@ -113,6 +115,7 @@ fn print_boot_info(
     };
 
     print_loaded_kernel(serial, loaded_kernel);
+    print_kernel_segments(serial, loaded_kernel);
 }
 
 #[cfg(target_os = "uefi")]
@@ -183,6 +186,10 @@ fn print_loaded_kernel(serial: &mut SerialPort, loaded_kernel: LoadedKernelImage
     write_decimal_u64(serial, loaded_kernel.file_size as u64);
     serial.write_bytes(b" bytes\r\n");
 
+    serial.write_bytes(b"kernel entry point:  ");
+    write_hex_u64(serial, loaded_kernel.entry_point);
+    serial.write_bytes(b"\r\n");
+
     serial.write_bytes(b"kernel loaded start: ");
     write_hex_u64(serial, loaded_kernel.physical_start);
     serial.write_bytes(b"\r\n");
@@ -198,6 +205,44 @@ fn print_load_error(serial: &mut SerialPort, error: LoadError) {
     serial.write_bytes(error.stage);
     serial.write_bytes(b": ");
     write_hex_usize(serial, error.status);
+}
+
+#[cfg(target_os = "uefi")]
+fn print_kernel_segments(serial: &mut SerialPort, loaded_kernel: LoadedKernelImage) {
+    serial.write_bytes(b"loadable segments:\r\n");
+    for (index, segment) in loaded_kernel.segments[..loaded_kernel.segment_count]
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        if segment.memory_size == 0 {
+            continue;
+        }
+        print_segment(serial, index, segment);
+    }
+}
+
+#[cfg(target_os = "uefi")]
+fn print_segment(serial: &mut SerialPort, index: usize, segment: LoadedSegment) {
+    serial.write_bytes(b"  [");
+    write_decimal_u64(serial, index as u64);
+    serial.write_bytes(b"] off=");
+    write_hex_u64(serial, segment.file_offset);
+    serial.write_bytes(b" paddr=");
+    write_hex_u64(serial, segment.physical_start);
+    serial.write_bytes(b"..");
+    write_hex_u64(serial, segment.physical_end);
+    serial.write_bytes(b" vaddr=");
+    write_hex_u64(serial, segment.virtual_address);
+    serial.write_bytes(b" filesz=");
+    write_hex_u64(serial, segment.file_size);
+    serial.write_bytes(b" memsz=");
+    write_hex_u64(serial, segment.memory_size);
+    serial.write_bytes(b" flags=");
+    write_hex_u32(serial, segment.flags);
+    serial.write_bytes(b" align=");
+    write_hex_u64(serial, segment.align);
+    serial.write_bytes(b"\r\n");
 }
 
 #[cfg(target_os = "uefi")]

@@ -188,7 +188,8 @@ pub struct FileProtocol {
     ) -> EfiStatus,
     pub write: usize,
     pub get_position: usize,
-    pub set_position: usize,
+    pub set_position:
+        unsafe extern "efiapi" fn(this: *mut FileProtocol, position: u64) -> EfiStatus,
     pub get_info: unsafe extern "efiapi" fn(
         this: *mut FileProtocol,
         information_type: *const Guid,

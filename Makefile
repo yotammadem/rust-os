@@ -21,7 +21,7 @@ kernel: $(KERNEL_IMAGE)
 
 image: $(IMAGE)
 
-$(LOADER_EFI): Cargo.toml loader/Cargo.toml loader/build.rs loader/src/main.rs loader/src/bootinfo.rs loader/src/kernel_image.rs loader/src/memory.rs rust-toolchain.toml .cargo/config.toml src/lib.rs src/boot/mod.rs src/boot/handoff.rs src/boot/multiboot.rs src/arch/mod.rs src/arch/x86_64/mod.rs src/arch/x86_64/serial.rs src/arch/x86_64/halt.rs linker/loader.ld asm/boot.s
+$(LOADER_EFI): Cargo.toml loader/Cargo.toml loader/build.rs loader/src/main.rs loader/src/bootinfo.rs loader/src/elf.rs loader/src/kernel_image.rs loader/src/memory.rs rust-toolchain.toml .cargo/config.toml src/lib.rs src/boot/mod.rs src/boot/handoff.rs src/boot/multiboot.rs src/arch/mod.rs src/arch/x86_64/mod.rs src/arch/x86_64/serial.rs src/arch/x86_64/halt.rs linker/loader.ld asm/boot.s
 	cargo build --manifest-path loader/Cargo.toml --target $(TARGET)
 
 $(KERNEL_IMAGE): Cargo.toml kernel/Cargo.toml kernel/build.rs kernel/src/main.rs rust-toolchain.toml .cargo/config.toml src/lib.rs src/boot/mod.rs src/boot/handoff.rs src/arch/mod.rs src/arch/x86_64/mod.rs src/arch/x86_64/serial.rs src/arch/x86_64/halt.rs linker/kernel.ld asm/boot.s
