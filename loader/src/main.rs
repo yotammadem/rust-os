@@ -3,7 +3,11 @@
 
 #[cfg(target_os = "uefi")]
 mod bootinfo;
+#[cfg(target_os = "uefi")]
+mod memory;
 
+#[cfg(target_os = "uefi")]
+use self::memory::{EarlyLayout, PhysicalRange};
 #[cfg(target_os = "uefi")]
 use core::panic::PanicInfo;
 #[cfg(target_os = "uefi")]
@@ -13,10 +17,7 @@ use rust_os::arch::x86_64::{halt, serial::SerialPort};
 #[cfg(target_os = "uefi")]
 use rust_os::boot::handoff::BootInfo;
 #[cfg(target_os = "uefi")]
-use rust_os::boot::multiboot::{
-    EFI_BOOT_SERVICES_CODE, EFI_BOOT_SERVICES_DATA, EFI_CONVENTIONAL_MEMORY, EFI_LOADER_CODE,
-    EFI_LOADER_DATA, EfiHandle, EfiStatus, MemoryDescriptor, SystemTable,
-};
+use rust_os::boot::multiboot::{EfiHandle, EfiStatus, SystemTable};
 
 #[cfg(not(target_os = "uefi"))]
 fn main() {}
@@ -80,43 +81,12 @@ fn print_boot_info(serial: &mut SerialPort, boot_info: &BootInfo) {
     write_hex_usize(serial, count);
     serial.write_bytes(b"\r\n");
 
-    let mut total_memory = 0u64;
-    let mut available_memory = 0u64;
+    let layout = EarlyLayout::from_boot_info(boot_info);
 
-    serial.write_bytes(b"memory map entries:\r\n");
-    for (index, descriptor) in boot_info.memory_map.descriptors().enumerate() {
-        let bytes = descriptor.number_of_pages.saturating_mul(4096);
-        total_memory = total_memory.saturating_add(bytes);
-        if is_available_memory(descriptor) {
-            available_memory = available_memory.saturating_add(bytes);
-        }
-
-        serial.write_bytes(b"  [");
-        write_hex_usize(serial, index);
-        serial.write_bytes(b"] ");
-        serial.write_bytes(memory_type_name(descriptor.typ));
-        serial.write_bytes(b" phys=");
-        write_hex_u64(serial, descriptor.physical_start);
-        serial.write_bytes(b"..");
-        write_hex_u64(serial, descriptor_end(descriptor));
-        serial.write_bytes(b" pages=");
-        write_hex_u64(serial, descriptor.number_of_pages);
-        serial.write_bytes(b" bytes=");
-        write_hex_u64(serial, bytes);
-        serial.write_bytes(b"\r\n");
-    }
-
-    serial.write_bytes(b"total described memory: ");
-    write_decimal_u64(serial, total_memory);
-    serial.write_bytes(b" bytes (");
-    write_decimal_u64(serial, total_memory / (1024 * 1024));
-    serial.write_bytes(b" MiB)\r\n");
-
-    serial.write_bytes(b"available memory:      ");
-    write_decimal_u64(serial, available_memory);
-    serial.write_bytes(b" bytes (");
-    write_decimal_u64(serial, available_memory / (1024 * 1024));
-    serial.write_bytes(b" MiB)\r\n");
+    print_candidate(serial, b"early allocation region", layout.region);
+    print_candidate(serial, b"kernel usable region", layout.kernel_usable_region);
+    print_candidate(serial, b"boot-info region", layout.boot_info_region);
+    print_candidate(serial, b"page-table region", layout.page_table_region);
 }
 
 #[cfg(target_os = "uefi")]
@@ -162,51 +132,30 @@ fn write_decimal_u64(serial: &mut SerialPort, mut value: u64) {
 }
 
 #[cfg(target_os = "uefi")]
+fn print_candidate(serial: &mut SerialPort, title: &[u8], range: PhysicalRange) {
+    serial.write_bytes(title);
+    serial.write_bytes(b": ");
+    print_range(serial, range);
+    serial.write_bytes(b"\r\n");
+}
+
+#[cfg(target_os = "uefi")]
+fn print_range(serial: &mut SerialPort, range: PhysicalRange) {
+    write_hex_u64(serial, range.start);
+    serial.write_bytes(b"..");
+    write_hex_u64(serial, range.end);
+    serial.write_bytes(b" bytes=");
+    write_decimal_u64(serial, range.size_bytes());
+    serial.write_bytes(b" (");
+    write_decimal_u64(serial, range.size_bytes() / (1024 * 1024));
+    serial.write_bytes(b" MiB)");
+}
+
+#[cfg(target_os = "uefi")]
 fn hex_digit(value: u8) -> u8 {
     match value {
         0..=9 => b'0' + value,
         _ => b'a' + (value - 10),
-    }
-}
-
-#[cfg(target_os = "uefi")]
-fn descriptor_end(descriptor: &MemoryDescriptor) -> u64 {
-    descriptor
-        .physical_start
-        .saturating_add(descriptor.number_of_pages.saturating_mul(4096))
-}
-
-#[cfg(target_os = "uefi")]
-fn is_available_memory(descriptor: &MemoryDescriptor) -> bool {
-    matches!(
-        descriptor.typ,
-        EFI_LOADER_CODE
-            | EFI_LOADER_DATA
-            | EFI_BOOT_SERVICES_CODE
-            | EFI_BOOT_SERVICES_DATA
-            | EFI_CONVENTIONAL_MEMORY
-    )
-}
-
-#[cfg(target_os = "uefi")]
-fn memory_type_name(typ: u32) -> &'static [u8] {
-    match typ {
-        0 => b"reserved",
-        1 => b"loader_code",
-        2 => b"loader_data",
-        3 => b"boot_code",
-        4 => b"boot_data",
-        5 => b"rt_code",
-        6 => b"rt_data",
-        7 => b"conventional",
-        8 => b"unusable",
-        9 => b"acpi_reclaim",
-        10 => b"acpi_nvs",
-        11 => b"mmio",
-        12 => b"mmio_port",
-        13 => b"pal_code",
-        14 => b"persistent",
-        _ => b"unknown",
     }
 }
 
