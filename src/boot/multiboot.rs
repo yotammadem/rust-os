@@ -13,17 +13,34 @@ pub type EfiGuid = Guid;
 pub const EFI_SUCCESS: EfiStatus = 0;
 pub const EFI_ABORTED: EfiStatus = 0x8000_0000_0000_0015;
 pub const EFI_BUFFER_TOO_SMALL: EfiStatus = 0x8000_0000_0000_0005;
+pub const EFI_DEVICE_ERROR: EfiStatus = 0x8000_0000_0000_0007;
+pub const EFI_VOLUME_CORRUPTED: EfiStatus = 0x8000_0000_0000_000a;
+pub const EFI_NOT_FOUND: EfiStatus = 0x8000_0000_0000_000e;
 pub const EFI_LOADER_CODE: EfiMemoryType = 1;
 pub const EFI_LOADER_DATA: EfiMemoryType = 2;
 pub const EFI_BOOT_SERVICES_CODE: EfiMemoryType = 3;
 pub const EFI_BOOT_SERVICES_DATA: EfiMemoryType = 4;
 pub const EFI_CONVENTIONAL_MEMORY: EfiMemoryType = 7;
+pub const EFI_FILE_MODE_READ: u64 = 0x0000_0000_0000_0001;
+pub const EFI_BY_PROTOCOL: u32 = 2;
 
 pub const LOADED_IMAGE_PROTOCOL_GUID: Guid = Guid::new(
     0x5B1B31A1,
     0x9562,
     0x11D2,
     [0x8E, 0x3F, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B],
+);
+pub const SIMPLE_FILE_SYSTEM_PROTOCOL_GUID: Guid = Guid::new(
+    0x964E5B22,
+    0x6459,
+    0x11D2,
+    [0x8E, 0x39, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B],
+);
+pub const FILE_INFO_GUID: Guid = Guid::new(
+    0x09576E92,
+    0x6D3F,
+    0x11D2,
+    [0x8E, 0x39, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B],
 );
 
 #[repr(C)]
@@ -108,7 +125,13 @@ pub struct BootServices {
     pub close_protocol: usize,
     pub open_protocol_information: usize,
     pub protocols_per_handle: usize,
-    pub locate_handle_buffer: usize,
+    pub locate_handle_buffer: unsafe extern "efiapi" fn(
+        search_type: u32,
+        protocol: *const Guid,
+        search_key: *mut c_void,
+        no_handles: *mut usize,
+        buffer: *mut *mut EfiHandle,
+    ) -> EfiStatus,
     pub locate_protocol: usize,
     pub install_multiple_protocol_interfaces: usize,
     pub uninstall_multiple_protocol_interfaces: usize,
@@ -143,6 +166,76 @@ pub struct LoadedImageProtocol {
     pub image_code_type: EfiMemoryType,
     pub image_data_type: EfiMemoryType,
     pub unload: usize,
+}
+
+#[repr(C)]
+pub struct SimpleFileSystemProtocol {
+    pub revision: u64,
+    pub open_volume: unsafe extern "efiapi" fn(
+        this: *mut SimpleFileSystemProtocol,
+        root: *mut *mut FileProtocol,
+    ) -> EfiStatus,
+}
+
+#[repr(C)]
+pub struct FileProtocol {
+    pub revision: u64,
+    pub open: unsafe extern "efiapi" fn(
+        this: *mut FileProtocol,
+        new_handle: *mut *mut FileProtocol,
+        file_name: *const u16,
+        open_mode: u64,
+        attributes: u64,
+    ) -> EfiStatus,
+    pub close: unsafe extern "efiapi" fn(this: *mut FileProtocol) -> EfiStatus,
+    pub delete: usize,
+    pub read: unsafe extern "efiapi" fn(
+        this: *mut FileProtocol,
+        buffer_size: *mut usize,
+        buffer: *mut c_void,
+    ) -> EfiStatus,
+    pub write: usize,
+    pub get_position: usize,
+    pub set_position: usize,
+    pub get_info: unsafe extern "efiapi" fn(
+        this: *mut FileProtocol,
+        information_type: *const Guid,
+        buffer_size: *mut usize,
+        buffer: *mut c_void,
+    ) -> EfiStatus,
+    pub set_info: usize,
+    pub flush: usize,
+    pub open_ex: usize,
+    pub read_ex: usize,
+    pub write_ex: usize,
+    pub flush_ex: usize,
+}
+
+#[repr(C)]
+pub struct Time {
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+    pub pad1: u8,
+    pub nanosecond: u32,
+    pub time_zone: i16,
+    pub daylight: u8,
+    pub pad2: u8,
+}
+
+#[repr(C)]
+pub struct FileInfo {
+    pub size: u64,
+    pub file_size: u64,
+    pub physical_size: u64,
+    pub create_time: Time,
+    pub last_access_time: Time,
+    pub modification_time: Time,
+    pub attribute: u64,
+    pub file_name: [u16; 1],
 }
 
 #[repr(C)]

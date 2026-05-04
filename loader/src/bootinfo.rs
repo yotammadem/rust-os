@@ -26,7 +26,7 @@ pub fn collect(
     })
 }
 
-fn boot_services(
+pub(crate) fn boot_services(
     system_table: *mut SystemTable,
 ) -> Result<&'static rust_os::boot::multiboot::BootServices, EfiStatus> {
     if system_table.is_null() {
@@ -41,7 +41,7 @@ fn boot_services(
     Ok(unsafe { &*boot_services })
 }
 
-fn loaded_image(
+pub(crate) fn loaded_image(
     boot_services: &rust_os::boot::multiboot::BootServices,
     image_handle: EfiHandle,
 ) -> Result<&'static LoadedImageProtocol, EfiStatus> {

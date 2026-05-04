@@ -4,8 +4,12 @@
 #[cfg(target_os = "uefi")]
 mod bootinfo;
 #[cfg(target_os = "uefi")]
+mod kernel_image;
+#[cfg(target_os = "uefi")]
 mod memory;
 
+#[cfg(target_os = "uefi")]
+use self::kernel_image::{LoadError, LoadedKernelImage};
 #[cfg(target_os = "uefi")]
 use self::memory::{EarlyLayout, PhysicalRange};
 #[cfg(target_os = "uefi")]
@@ -42,12 +46,17 @@ pub extern "efiapi" fn efi_main(
         }
     };
 
-    print_boot_info(&mut serial, &boot_info);
+    print_boot_info(&mut serial, image_handle, system_table, &boot_info);
     halt::halt_forever()
 }
 
 #[cfg(target_os = "uefi")]
-fn print_boot_info(serial: &mut SerialPort, boot_info: &BootInfo) {
+fn print_boot_info(
+    serial: &mut SerialPort,
+    image_handle: EfiHandle,
+    system_table: *mut SystemTable,
+    boot_info: &BootInfo,
+) {
     serial.write_bytes(b"loader image start: ");
     write_hex_u64(serial, boot_info.loader_image.start);
     serial.write_bytes(b"\r\n");
@@ -87,6 +96,23 @@ fn print_boot_info(serial: &mut SerialPort, boot_info: &BootInfo) {
     print_candidate(serial, b"kernel usable region", layout.kernel_usable_region);
     print_candidate(serial, b"boot-info region", layout.boot_info_region);
     print_candidate(serial, b"page-table region", layout.page_table_region);
+
+    serial.write_bytes(b"loading kernel image...\r\n");
+    let loaded_kernel = match kernel_image::load(
+        image_handle,
+        system_table,
+        layout.kernel_usable_region.start,
+        layout.kernel_usable_region.size_bytes() as usize,
+    ) {
+        Ok(loaded_kernel) => loaded_kernel,
+        Err(error) => {
+            print_load_error(serial, error);
+            serial.write_bytes(b"\r\n");
+            return;
+        }
+    };
+
+    print_loaded_kernel(serial, loaded_kernel);
 }
 
 #[cfg(target_os = "uefi")]
@@ -149,6 +175,29 @@ fn print_range(serial: &mut SerialPort, range: PhysicalRange) {
     serial.write_bytes(b" (");
     write_decimal_u64(serial, range.size_bytes() / (1024 * 1024));
     serial.write_bytes(b" MiB)");
+}
+
+#[cfg(target_os = "uefi")]
+fn print_loaded_kernel(serial: &mut SerialPort, loaded_kernel: LoadedKernelImage) {
+    serial.write_bytes(b"kernel file size:    ");
+    write_decimal_u64(serial, loaded_kernel.file_size as u64);
+    serial.write_bytes(b" bytes\r\n");
+
+    serial.write_bytes(b"kernel loaded start: ");
+    write_hex_u64(serial, loaded_kernel.physical_start);
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"kernel loaded end:   ");
+    write_hex_u64(serial, loaded_kernel.physical_end);
+    serial.write_bytes(b"\r\n");
+}
+
+#[cfg(target_os = "uefi")]
+fn print_load_error(serial: &mut SerialPort, error: LoadError) {
+    serial.write_bytes(b"kernel load failed at ");
+    serial.write_bytes(error.stage);
+    serial.write_bytes(b": ");
+    write_hex_usize(serial, error.status);
 }
 
 #[cfg(target_os = "uefi")]
