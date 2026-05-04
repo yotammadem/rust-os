@@ -1,14 +1,17 @@
 #![cfg_attr(target_os = "uefi", no_std)]
 #![cfg_attr(target_os = "uefi", no_main)]
 
+#[cfg(target_os = "uefi")]
 mod arch;
+#[cfg(target_os = "uefi")]
 mod boot;
+#[cfg(target_os = "uefi")]
 mod kernel;
 
 #[cfg(target_os = "uefi")]
-use arch::x86_64::{framebuffer::FramebufferConsole, halt};
+use arch::x86_64::{halt, serial::SerialPort};
 #[cfg(target_os = "uefi")]
-use boot::multiboot::{EFI_ABORTED, EfiHandle, EfiStatus, SystemTable};
+use boot::multiboot::{EfiHandle, EfiStatus, SystemTable};
 #[cfg(target_os = "uefi")]
 use core::panic::PanicInfo;
 
@@ -19,14 +22,11 @@ fn main() {}
 #[unsafe(no_mangle)]
 pub extern "efiapi" fn efi_main(
     _image_handle: EfiHandle,
-    system_table: *mut SystemTable,
+    _system_table: *mut SystemTable,
 ) -> EfiStatus {
-    let mut console = match unsafe { FramebufferConsole::from_system_table(system_table) } {
-        Some(console) => console,
-        None => return EFI_ABORTED,
-    };
+    let mut serial = unsafe { SerialPort::com1() };
 
-    match kernel::hello::render(&mut console) {
+    match kernel::hello::render(&mut serial) {
         Ok(()) => {}
         Err(status) => return status,
     }

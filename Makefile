@@ -19,7 +19,7 @@ kernel: $(KERNEL_EFI)
 
 image: $(IMAGE)
 
-$(KERNEL_EFI): Cargo.toml rust-toolchain.toml .cargo/config.toml src/lib.rs src/main.rs src/boot/mod.rs src/boot/multiboot.rs src/arch/x86_64/mod.rs src/arch/x86_64/framebuffer.rs src/arch/x86_64/halt.rs src/kernel/mod.rs src/kernel/hello.rs asm/boot.s
+$(KERNEL_EFI): Cargo.toml rust-toolchain.toml .cargo/config.toml src/lib.rs src/main.rs src/boot/mod.rs src/boot/multiboot.rs src/arch/x86_64/mod.rs src/arch/x86_64/serial.rs src/arch/x86_64/halt.rs src/kernel/mod.rs src/kernel/hello.rs asm/boot.s
 	cargo build --target $(TARGET)
 
 $(GRUB_EFI): grub/grub.cfg $(KERNEL_EFI)
