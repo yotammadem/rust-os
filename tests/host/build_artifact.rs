@@ -7,7 +7,7 @@ fn boot_image_path_points_to_bin_image() {
 
 #[test]
 fn efi_artifact_paths_match_image_layout() {
-    assert_eq!(LOADER_EFI_PATH, "EFI/BOOT/LOADER.EFI");
+    assert_eq!(LOADER_EFI_PATH, "EFI/BOOT/BOOTX64.EFI");
     assert_eq!(KERNEL_IMAGE_PATH, "EFI/BOOT/KERNEL.BIN");
 }
 

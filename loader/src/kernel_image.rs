@@ -2,10 +2,9 @@ use core::ffi::c_void;
 
 use crate::bootinfo::{boot_services, loaded_image};
 use rust_os::boot::multiboot::{
-    EFI_ABORTED, EFI_BUFFER_TOO_SMALL, EFI_BY_PROTOCOL, EFI_DEVICE_ERROR, EFI_FILE_MODE_READ,
-    EFI_LOADER_DATA, EFI_NOT_FOUND, EFI_SUCCESS, EFI_VOLUME_CORRUPTED, EfiHandle, EfiStatus,
-    FILE_INFO_GUID, FileInfo, FileProtocol, SIMPLE_FILE_SYSTEM_PROTOCOL_GUID,
-    SimpleFileSystemProtocol, SystemTable,
+    EFI_ABORTED, EFI_BUFFER_TOO_SMALL, EFI_DEVICE_ERROR, EFI_FILE_MODE_READ, EFI_LOADER_DATA,
+    EFI_SUCCESS, EFI_VOLUME_CORRUPTED, EfiHandle, EfiStatus, FILE_INFO_GUID, FileInfo,
+    FileProtocol, SIMPLE_FILE_SYSTEM_PROTOCOL_GUID, SimpleFileSystemProtocol, SystemTable,
 };
 
 const EFI_DIR_UTF16: &[u16] = &['E' as u16, 'F' as u16, 'I' as u16, 0];
@@ -42,7 +41,18 @@ pub fn load(
         stage: b"loaded_image",
         status,
     })?;
-    let file = find_kernel_file(boot_services, loaded_image.device_handle).map_err(|error| error)?;
+    let volume = volume(boot_services, loaded_image.device_handle).map_err(|status| LoadError {
+        stage: b"simple_fs",
+        status,
+    })?;
+    let root = open_volume(volume).map_err(|status| LoadError {
+        stage: b"open_volume",
+        status,
+    })?;
+    let file = open_kernel_file(root).map_err(|status| LoadError {
+        stage: b"open_kernel",
+        status,
+    })?;
     let file_size = file_size(boot_services, file).map_err(|status| LoadError {
         stage: b"file_size",
         status,
@@ -64,6 +74,7 @@ pub fn load(
         )
     };
     let _ = unsafe { ((*file).close)(file) };
+    let _ = unsafe { ((*root).close)(root) };
     if status != EFI_SUCCESS || bytes_to_read != file_size {
         return Err(LoadError {
             stage: b"read",
@@ -75,63 +86,6 @@ pub fn load(
         physical_start,
         physical_end: physical_start + file_size as u64,
         file_size,
-    })
-}
-
-fn find_kernel_file(
-    boot_services: &rust_os::boot::multiboot::BootServices,
-    preferred_handle: EfiHandle,
-) -> Result<*mut FileProtocol, LoadError> {
-    if !preferred_handle.is_null() {
-        if let Ok(volume) = volume(boot_services, preferred_handle) {
-            if let Ok(root) = open_volume(volume) {
-                if let Ok(file) = open_kernel_file(root) {
-                    let _ = unsafe { ((*root).close)(root) };
-                    return Ok(file);
-                }
-                let _ = unsafe { ((*root).close)(root) };
-            }
-        }
-    }
-
-    let mut handle_count = 0usize;
-    let mut handles: *mut EfiHandle = core::ptr::null_mut();
-    let status = unsafe {
-        (boot_services.locate_handle_buffer)(
-            EFI_BY_PROTOCOL,
-            &SIMPLE_FILE_SYSTEM_PROTOCOL_GUID,
-            core::ptr::null_mut(),
-            &mut handle_count,
-            &mut handles,
-        )
-    };
-    if status != EFI_SUCCESS || handles.is_null() {
-        return Err(LoadError {
-            stage: b"locate_fs",
-            status,
-        });
-    }
-
-    let handle_slice = unsafe { core::slice::from_raw_parts(handles, handle_count) };
-    for &handle in handle_slice {
-        let Ok(volume) = volume(boot_services, handle) else {
-            continue;
-        };
-        let Ok(root) = open_volume(volume) else {
-            continue;
-        };
-        if let Ok(file) = open_kernel_file(root) {
-            let _ = unsafe { ((*root).close)(root) };
-            let _ = unsafe { (boot_services.free_pool)(handles.cast()) };
-            return Ok(file);
-        }
-        let _ = unsafe { ((*root).close)(root) };
-    }
-
-    let _ = unsafe { (boot_services.free_pool)(handles.cast()) };
-    Err(LoadError {
-        stage: b"find_kernel",
-        status: EFI_NOT_FOUND,
     })
 }
 

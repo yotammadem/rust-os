@@ -7,7 +7,7 @@ pub mod boot;
 pub const BOOT_IMAGE_PATH: &str = "bin/hello-boot.img";
 pub const DEFAULT_OVMF_CODE: &str = "/usr/local/share/qemu/edk2-x86_64-code.fd";
 pub const HELLO_WORLD: &str = "hello world";
-pub const LOADER_EFI_PATH: &str = "EFI/BOOT/LOADER.EFI";
+pub const LOADER_EFI_PATH: &str = "EFI/BOOT/BOOTX64.EFI";
 pub const KERNEL_IMAGE_PATH: &str = "EFI/BOOT/KERNEL.BIN";
 pub const LOADER_SERIAL_BANNER: &[u8] = b"loader boot info\r\n";
 pub const KERNEL_SERIAL_BANNER: &[u8] = b"kernel stub\r\n";

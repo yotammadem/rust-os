@@ -15,14 +15,12 @@ pub const EFI_ABORTED: EfiStatus = 0x8000_0000_0000_0015;
 pub const EFI_BUFFER_TOO_SMALL: EfiStatus = 0x8000_0000_0000_0005;
 pub const EFI_DEVICE_ERROR: EfiStatus = 0x8000_0000_0000_0007;
 pub const EFI_VOLUME_CORRUPTED: EfiStatus = 0x8000_0000_0000_000a;
-pub const EFI_NOT_FOUND: EfiStatus = 0x8000_0000_0000_000e;
 pub const EFI_LOADER_CODE: EfiMemoryType = 1;
 pub const EFI_LOADER_DATA: EfiMemoryType = 2;
 pub const EFI_BOOT_SERVICES_CODE: EfiMemoryType = 3;
 pub const EFI_BOOT_SERVICES_DATA: EfiMemoryType = 4;
 pub const EFI_CONVENTIONAL_MEMORY: EfiMemoryType = 7;
 pub const EFI_FILE_MODE_READ: u64 = 0x0000_0000_0000_0001;
-pub const EFI_BY_PROTOCOL: u32 = 2;
 
 pub const LOADED_IMAGE_PROTOCOL_GUID: Guid = Guid::new(
     0x5B1B31A1,
@@ -125,13 +123,7 @@ pub struct BootServices {
     pub close_protocol: usize,
     pub open_protocol_information: usize,
     pub protocols_per_handle: usize,
-    pub locate_handle_buffer: unsafe extern "efiapi" fn(
-        search_type: u32,
-        protocol: *const Guid,
-        search_key: *mut c_void,
-        no_handles: *mut usize,
-        buffer: *mut *mut EfiHandle,
-    ) -> EfiStatus,
+    pub locate_handle_buffer: usize,
     pub locate_protocol: usize,
     pub install_multiple_protocol_interfaces: usize,
     pub uninstall_multiple_protocol_interfaces: usize,

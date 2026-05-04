@@ -8,10 +8,8 @@ EFI_STAGING := $(BUILD_DIR)/efi
 IMAGE := bin/hello-boot.img
 LOADER_EFI := target/$(TARGET)/$(PROFILE)/loader.efi
 KERNEL_IMAGE := target/$(KERNEL_TARGET)/$(PROFILE)/kernel
-GRUB_EFI := $(EFI_STAGING)/EFI/BOOT/BOOTX64.EFI
-LOADER_APP_EFI := $(EFI_STAGING)/EFI/BOOT/LOADER.EFI
+BOOTX64_EFI := $(EFI_STAGING)/EFI/BOOT/BOOTX64.EFI
 KERNEL_APP_IMAGE := $(EFI_STAGING)/EFI/BOOT/KERNEL.BIN
-GRUB_MKSTANDALONE := $(shell command -v grub-mkstandalone 2>/dev/null || command -v x86_64-elf-grub-mkstandalone 2>/dev/null)
 
 .PHONY: build clean loader kernel image check-tools
 
@@ -29,16 +27,9 @@ $(LOADER_EFI): Cargo.toml loader/Cargo.toml loader/build.rs loader/src/main.rs l
 $(KERNEL_IMAGE): Cargo.toml kernel/Cargo.toml kernel/build.rs kernel/src/main.rs rust-toolchain.toml .cargo/config.toml src/lib.rs src/boot/mod.rs src/boot/handoff.rs src/arch/mod.rs src/arch/x86_64/mod.rs src/arch/x86_64/serial.rs src/arch/x86_64/halt.rs linker/kernel.ld asm/boot.s
 	cargo build --manifest-path kernel/Cargo.toml --target $(KERNEL_TARGET)
 
-$(GRUB_EFI): grub/grub.cfg $(LOADER_EFI)
-	@test -n "$(GRUB_MKSTANDALONE)" || { echo "missing grub-mkstandalone; install GRUB host tooling first"; exit 1; }
-	@mkdir -p $(dir $(GRUB_EFI))
-	$(GRUB_MKSTANDALONE) -O x86_64-efi -o $(GRUB_EFI) \
-		"boot/grub/grub.cfg=grub/grub.cfg" \
-		"EFI/BOOT/LOADER.EFI=$(LOADER_EFI)"
-
-$(IMAGE): $(LOADER_EFI) $(KERNEL_IMAGE) $(GRUB_EFI)
+$(IMAGE): $(LOADER_EFI) $(KERNEL_IMAGE)
 	@mkdir -p bin $(EFI_STAGING)/EFI/BOOT
-	cp $(LOADER_EFI) $(LOADER_APP_EFI)
+	cp $(LOADER_EFI) $(BOOTX64_EFI)
 	cp $(KERNEL_IMAGE) $(KERNEL_APP_IMAGE)
 	rm -f $(IMAGE)
 	dd if=/dev/zero of=$(IMAGE) bs=1m count=64
@@ -50,8 +41,7 @@ $(IMAGE): $(LOADER_EFI) $(KERNEL_IMAGE) $(GRUB_EFI)
 		MOUNT_POINT=$$(diskutil info $$PART | awk -F': *' '/Mount Point/ { print $$2 }'); \
 		if [ -z "$$MOUNT_POINT" ]; then echo "failed to mount EFI partition"; hdiutil detach $$DEV >/dev/null; exit 1; fi; \
 		mkdir -p $$MOUNT_POINT/EFI/BOOT; \
-		cp $(GRUB_EFI) $$MOUNT_POINT/EFI/BOOT/BOOTX64.EFI; \
-		cp $(LOADER_APP_EFI) $$MOUNT_POINT/EFI/BOOT/LOADER.EFI; \
+		cp $(BOOTX64_EFI) $$MOUNT_POINT/EFI/BOOT/BOOTX64.EFI; \
 		cp $(KERNEL_APP_IMAGE) $$MOUNT_POINT/EFI/BOOT/KERNEL.BIN; \
 		hdiutil detach $$DEV >/dev/null
 
