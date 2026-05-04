@@ -13,7 +13,11 @@ pub type EfiGuid = Guid;
 pub const EFI_SUCCESS: EfiStatus = 0;
 pub const EFI_ABORTED: EfiStatus = 0x8000_0000_0000_0015;
 pub const EFI_BUFFER_TOO_SMALL: EfiStatus = 0x8000_0000_0000_0005;
-pub const EFI_LOADER_DATA: EfiMemoryType = 4;
+pub const EFI_LOADER_CODE: EfiMemoryType = 1;
+pub const EFI_LOADER_DATA: EfiMemoryType = 2;
+pub const EFI_BOOT_SERVICES_CODE: EfiMemoryType = 3;
+pub const EFI_BOOT_SERVICES_DATA: EfiMemoryType = 4;
+pub const EFI_CONVENTIONAL_MEMORY: EfiMemoryType = 7;
 
 pub const LOADED_IMAGE_PROTOCOL_GUID: Guid = Guid::new(
     0x5B1B31A1,
