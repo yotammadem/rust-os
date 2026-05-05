@@ -9,11 +9,15 @@ mod elf;
 mod kernel_image;
 #[cfg(target_os = "uefi")]
 mod memory;
+#[cfg(target_os = "uefi")]
+mod paging;
 
 #[cfg(target_os = "uefi")]
 use self::kernel_image::{LoadError, LoadedKernelImage, LoadedSegment};
 #[cfg(target_os = "uefi")]
 use self::memory::{EarlyLayout, PhysicalRange};
+#[cfg(target_os = "uefi")]
+use self::paging::{BuildError, BuiltPageTables};
 #[cfg(target_os = "uefi")]
 use core::panic::PanicInfo;
 #[cfg(target_os = "uefi")]
@@ -116,6 +120,17 @@ fn print_boot_info(
 
     print_loaded_kernel(serial, loaded_kernel);
     print_kernel_segments(serial, loaded_kernel);
+
+    serial.write_bytes(b"building page tables...\r\n");
+    let page_tables = match paging::build(boot_info, layout, loaded_kernel) {
+        Ok(page_tables) => page_tables,
+        Err(error) => {
+            print_paging_error(serial, error);
+            serial.write_bytes(b"\r\n");
+            return;
+        }
+    };
+    print_page_tables(serial, page_tables);
 }
 
 #[cfg(target_os = "uefi")]
@@ -243,6 +258,26 @@ fn print_segment(serial: &mut SerialPort, index: usize, segment: LoadedSegment) 
     serial.write_bytes(b" align=");
     write_hex_u64(serial, segment.align);
     serial.write_bytes(b"\r\n");
+}
+
+#[cfg(target_os = "uefi")]
+fn print_page_tables(serial: &mut SerialPort, page_tables: BuiltPageTables) {
+    serial.write_bytes(b"page-table root:     ");
+    write_hex_u64(serial, page_tables.pml4_physical_start);
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"page-table pages:    ");
+    write_decimal_u64(serial, page_tables.pages_used as u64);
+    serial.write_bytes(b"\r\n");
+
+    print_candidate(serial, b"loader stack window", page_tables.stack_window);
+    print_candidate(serial, b"memory-map window", page_tables.memory_map_window);
+}
+
+#[cfg(target_os = "uefi")]
+fn print_paging_error(serial: &mut SerialPort, error: BuildError) {
+    serial.write_bytes(b"page-table build failed at ");
+    serial.write_bytes(error.stage);
 }
 
 #[cfg(target_os = "uefi")]
