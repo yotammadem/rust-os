@@ -1,33 +1,45 @@
 # rust-os
 
-`rust-os` is a pure-Rust operating system project with a minimal boot chain based
-on GRUB. The current baseline boots a UEFI image in QEMU, chainloads a dedicated
-loader EFI application, prints `hello world` over serial, and halts. A separate
-kernel EFI application is also built and linked into the higher half in
-preparation for the paging and handoff work.
+`rust-os` is a pure-Rust x86_64 OS bring-up project built around a custom UEFI
+loader and a freestanding higher-half kernel.
 
-## Status
+The current system boots `BOOTX64.EFI` directly from the EFI system partition,
+prints progress over COM1 serial, collects boot information from UEFI, chooses a
+simple early physical-memory layout, loads `KERNEL.BIN` from disk, parses it as
+ELF64, and places each `PT_LOAD` segment into physical memory before halting.
 
-- Current branch work: `001-hello-boot`
-- Current deliverable: bootable x86_64 UEFI disk image at `bin/hello-boot.img`
+## Current State
+
+- Boot target: direct UEFI boot of `EFI/BOOT/BOOTX64.EFI`
+- Loader target: `x86_64-unknown-uefi`
+- Kernel target: `x86_64-unknown-none`
+- Output path: `bin/hello-boot.img`
 - Runtime flow: `make build` then `./run.sh`
 
-## Milestones
+At runtime the loader currently reports:
 
-1. **001 - Hello Boot**
-   Deliver a GRUB-based x86_64 UEFI boot image that builds into `bin/`,
-   launches through QEMU, prints `hello world`, and halts.
+- loader image start/end from `LoadedImageProtocol`
+- copied UEFI memory-map metadata
+- a simple early allocation layout:
+  - kernel-usable region
+  - boot-info region
+  - page-table region
+- kernel ELF entry point
+- physical and virtual placement of every loaded `PT_LOAD` segment
 
-## Changelog
+## Boot Flow
 
-### 2026-05-01
+1. Firmware starts `EFI/BOOT/BOOTX64.EFI`.
+2. The loader initializes serial output.
+3. The loader gathers boot info from UEFI.
+4. The loader derives a simple early physical-memory layout from conventional
+   memory above `2 MiB`.
+5. The loader opens `EFI/BOOT/KERNEL.BIN`.
+6. The loader reads the ELF headers, parses the loadable segments, and copies
+   each `PT_LOAD` segment into physical memory.
+7. The loader prints the resolved load plan and halts.
 
-- Added the first working boot milestone, `001 - Hello Boot`.
-- Introduced the Rust UEFI application, GRUB boot image assembly, QEMU run flow,
-  and host-side validation tests.
-- Added planning and implementation artifacts for the first feature under
-  `specs/001-hello-boot/`.
-- Detailed session report: [docs/session-2026-05-01-hello-boot.md](/Users/yotammadem/mademos/rust-os/docs/session-2026-05-01-hello-boot.md)
+Paging is not enabled yet, and control is not yet transferred to the kernel.
 
 ## Project Layout
 
@@ -35,15 +47,21 @@ preparation for the paging and handoff work.
 Cargo.toml
 Makefile
 run.sh
-grub/
-linker/
 asm/
-loader/
 kernel/
+linker/
+loader/
+specs/
 src/
 tests/
-specs/
 ```
+
+High-level split:
+
+- `loader/`: UEFI entrypoint and early boot logic
+- `kernel/`: freestanding higher-half kernel binary
+- `src/`: shared low-level code and shared boot/handoff types
+- `linker/`: separate loader and kernel linker scripts
 
 ## Quickstart
 
@@ -59,5 +77,10 @@ Run:
 ./run.sh
 ```
 
-For the exact verified host prerequisites and behavior, see
-[specs/001-hello-boot/quickstart.md](/Users/yotammadem/mademos/rust-os/specs/001-hello-boot/quickstart.md).
+## Next Steps
+
+- Build initial x86_64 page tables in the reserved page-table region.
+- Identity-map only the loader-side memory needed during the transition.
+- Map the loaded kernel ELF segments at their higher-half virtual addresses.
+- Extend the boot handoff with the minimal state the kernel needs.
+- Enable paging and jump to the kernel entry point.
