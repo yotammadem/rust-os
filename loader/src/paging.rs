@@ -5,6 +5,7 @@ use rust_os::boot::handoff::BootInfo;
 
 const PAGE_SIZE: u64 = 4096;
 const STACK_WINDOW_BYTES: u64 = 16 * PAGE_SIZE;
+const KERNEL_STACK_TOP: u64 = 0xffff_ffff_8008_0000;
 const ENTRY_COUNT: usize = 512;
 const ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
 const PRESENT: u64 = 1 << 0;
@@ -24,6 +25,8 @@ pub struct BuiltPageTables {
     pub pages_used: usize,
     pub stack_window: PhysicalRange,
     pub memory_map_window: PhysicalRange,
+    pub kernel_stack_physical: PhysicalRange,
+    pub kernel_stack_virtual: PhysicalRange,
 }
 
 #[derive(Clone, Copy)]
@@ -45,6 +48,7 @@ pub fn build(
         start: boot_info.loader_image.start,
         end: boot_info.loader_image.end,
     };
+    let kernel_stack_virtual = kernel_stack_virtual_range(layout.kernel_stack_region)?;
 
     let mut builder = PageTableBuilder::new(layout.page_table_region)?;
     builder.map_identity(loader_image, WRITABLE)?;
@@ -52,6 +56,12 @@ pub fn build(
     builder.map_identity(layout.page_table_region, WRITABLE)?;
     builder.map_identity(stack_window, WRITABLE)?;
     builder.map_identity(memory_map_window, WRITABLE)?;
+    builder.map_range(
+        kernel_stack_virtual.start,
+        layout.kernel_stack_region.start,
+        layout.kernel_stack_region.size_bytes(),
+        PRESENT | WRITABLE | NO_EXECUTE,
+    )?;
 
     for segment in loaded_kernel.segments[..loaded_kernel.segment_count]
         .iter()
@@ -82,6 +92,8 @@ pub fn build(
         pages_used: builder.pages_used,
         stack_window,
         memory_map_window,
+        kernel_stack_physical: layout.kernel_stack_region,
+        kernel_stack_virtual,
     })
 }
 
@@ -229,6 +241,26 @@ fn page_align_range(range: PhysicalRange) -> PhysicalRange {
         start: align_down(range.start, PAGE_SIZE),
         end: align_up(range.end, PAGE_SIZE),
     }
+}
+
+fn kernel_stack_virtual_range(
+    kernel_stack_physical: PhysicalRange,
+) -> Result<PhysicalRange, BuildError> {
+    if kernel_stack_physical.is_empty() {
+        return Err(BuildError {
+            stage: b"kernel_stack_region",
+        });
+    }
+
+    let size = kernel_stack_physical.size_bytes();
+    let start = KERNEL_STACK_TOP.checked_sub(size).ok_or(BuildError {
+        stage: b"kernel_stack_virtual",
+    })?;
+
+    Ok(PhysicalRange {
+        start,
+        end: KERNEL_STACK_TOP,
+    })
 }
 
 fn table_index(virtual_address: u64, shift: u64) -> usize {

@@ -6,6 +6,7 @@ const FOUR_KIB: u64 = 4096;
 const MIN_EARLY_REGION_START: u64 = TWO_MIB;
 const DEFAULT_PAGE_TABLE_BYTES: u64 = 16 * FOUR_KIB;
 const DEFAULT_BOOT_INFO_BYTES: u64 = 16 * FOUR_KIB;
+const DEFAULT_KERNEL_STACK_BYTES: u64 = 16 * FOUR_KIB;
 
 #[derive(Clone, Copy)]
 pub struct PhysicalRange {
@@ -30,6 +31,7 @@ impl PhysicalRange {
 pub struct EarlyLayout {
     pub region: PhysicalRange,
     pub kernel_usable_region: PhysicalRange,
+    pub kernel_stack_region: PhysicalRange,
     pub boot_info_region: PhysicalRange,
     pub page_table_region: PhysicalRange,
 }
@@ -42,10 +44,20 @@ impl EarlyLayout {
         let boot_info_source = shrink_end(region, page_table_region.size_bytes());
         let boot_info_region = carve_from_end(boot_info_source, DEFAULT_BOOT_INFO_BYTES, FOUR_KIB)
             .unwrap_or(PhysicalRange::empty());
+        let kernel_stack_source = shrink_end(
+            region,
+            page_table_region
+                .size_bytes()
+                .saturating_add(boot_info_region.size_bytes()),
+        );
+        let kernel_stack_region =
+            carve_from_end(kernel_stack_source, DEFAULT_KERNEL_STACK_BYTES, FOUR_KIB)
+                .unwrap_or(PhysicalRange::empty());
         let kernel_source = shrink_end(
             region,
             page_table_region
                 .size_bytes()
+                .saturating_add(kernel_stack_region.size_bytes())
                 .saturating_add(boot_info_region.size_bytes()),
         );
         let kernel_usable_region = aligned_prefix(kernel_source, TWO_MIB);
@@ -53,6 +65,7 @@ impl EarlyLayout {
         Self {
             region,
             kernel_usable_region,
+            kernel_stack_region,
             boot_info_region,
             page_table_region,
         }

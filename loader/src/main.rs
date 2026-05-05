@@ -100,6 +100,7 @@ fn print_boot_info(
 
     print_candidate(serial, b"early allocation region", layout.region);
     print_candidate(serial, b"kernel usable region", layout.kernel_usable_region);
+    print_candidate(serial, b"kernel stack region", layout.kernel_stack_region);
     print_candidate(serial, b"boot-info region", layout.boot_info_region);
     print_candidate(serial, b"page-table region", layout.page_table_region);
 
@@ -276,6 +277,15 @@ fn print_page_tables(
 
     print_candidate(serial, b"loader stack window", page_tables.stack_window);
     print_candidate(serial, b"memory-map window", page_tables.memory_map_window);
+    serial.write_bytes(b"kernel stack mapping: ");
+    write_hex_u64(serial, page_tables.kernel_stack_physical.start);
+    serial.write_bytes(b"..");
+    write_hex_u64(serial, page_tables.kernel_stack_physical.end);
+    serial.write_bytes(b" -> ");
+    write_hex_u64(serial, page_tables.kernel_stack_virtual.start);
+    serial.write_bytes(b"..");
+    write_hex_u64(serial, page_tables.kernel_stack_virtual.end);
+    serial.write_bytes(b"\r\n");
 
     serial.write_bytes(b"kernel higher-half mappings:\r\n");
     for (index, segment) in loaded_kernel.segments[..loaded_kernel.segment_count]
