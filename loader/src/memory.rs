@@ -1,4 +1,4 @@
-use rust_os::boot::handoff::BootInfo;
+use rust_os::boot::handoff::{BootInfo, PhysicalRange};
 use rust_os::boot::multiboot::EFI_CONVENTIONAL_MEMORY;
 
 const TWO_MIB: u64 = 2 * 1024 * 1024;
@@ -9,25 +9,6 @@ const DEFAULT_BOOT_INFO_BYTES: u64 = 16 * FOUR_KIB;
 const DEFAULT_KERNEL_STACK_BYTES: u64 = 16 * FOUR_KIB;
 
 #[derive(Clone, Copy)]
-pub struct PhysicalRange {
-    pub start: u64,
-    pub end: u64,
-}
-
-impl PhysicalRange {
-    pub const fn empty() -> Self {
-        Self { start: 0, end: 0 }
-    }
-
-    pub fn size_bytes(&self) -> u64 {
-        self.end.saturating_sub(self.start)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.start >= self.end
-    }
-}
-
 pub struct EarlyLayout {
     pub region: PhysicalRange,
     pub kernel_usable_region: PhysicalRange,

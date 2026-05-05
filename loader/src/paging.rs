@@ -1,7 +1,7 @@
 use crate::kernel_image::LoadedKernelImage;
-use crate::memory::{EarlyLayout, PhysicalRange};
+use crate::memory::EarlyLayout;
 use core::arch::asm;
-use rust_os::boot::handoff::BootInfo;
+use rust_os::boot::handoff::{BootInfo, PhysicalRange};
 
 const PAGE_SIZE: u64 = 4096;
 const STACK_WINDOW_BYTES: u64 = 16 * PAGE_SIZE;

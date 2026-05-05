@@ -1,6 +1,6 @@
 use core::ffi::c_void;
 
-use rust_os::boot::handoff::{BootInfo, LoadedImageRange, MemoryMapInfo};
+use rust_os::boot::handoff::{BootInfo, MemoryMapInfo, PhysicalRange};
 use rust_os::boot::multiboot::{
     EFI_ABORTED, EFI_BUFFER_TOO_SMALL, EFI_LOADER_DATA, EFI_SUCCESS, EfiHandle, EfiStatus,
     LOADED_IMAGE_PROTOCOL_GUID, LoadedImageProtocol, MemoryDescriptor, SystemTable,
@@ -17,13 +17,13 @@ pub fn collect(
     let image_start = loaded_image.image_base as usize as u64;
     let image_end = image_start + loaded_image.image_size;
 
-    Ok(BootInfo {
-        loader_image: LoadedImageRange {
+    Ok(BootInfo::new(
+        PhysicalRange {
             start: image_start,
             end: image_end,
         },
         memory_map,
-    })
+    ))
 }
 
 pub(crate) fn boot_services(

@@ -7,13 +7,15 @@ use core::panic::PanicInfo;
 use rust_os::KERNEL_SERIAL_BANNER;
 #[cfg(target_os = "none")]
 use rust_os::arch::x86_64::{halt, serial::SerialPort};
+#[cfg(target_os = "none")]
+use rust_os::boot::handoff::BootInfo;
 
 #[cfg(not(target_os = "none"))]
 fn main() {}
 
 #[cfg(target_os = "none")]
 #[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
+pub extern "C" fn _start(_boot_info: *const BootInfo) -> ! {
     let mut serial = unsafe { SerialPort::com1() };
     serial.write_bytes(KERNEL_SERIAL_BANNER);
     halt::halt_forever()

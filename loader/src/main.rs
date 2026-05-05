@@ -6,6 +6,8 @@ mod bootinfo;
 #[cfg(target_os = "uefi")]
 mod elf;
 #[cfg(target_os = "uefi")]
+mod handoff;
+#[cfg(target_os = "uefi")]
 mod kernel_image;
 #[cfg(target_os = "uefi")]
 mod memory;
@@ -13,9 +15,11 @@ mod memory;
 mod paging;
 
 #[cfg(target_os = "uefi")]
+use self::handoff::{HandoffError, PreparedHandoff};
+#[cfg(target_os = "uefi")]
 use self::kernel_image::{LoadError, LoadedKernelImage, LoadedSegment};
 #[cfg(target_os = "uefi")]
-use self::memory::{EarlyLayout, PhysicalRange};
+use self::memory::EarlyLayout;
 #[cfg(target_os = "uefi")]
 use self::paging::{BuildError, BuiltPageTables};
 #[cfg(target_os = "uefi")]
@@ -25,7 +29,7 @@ use rust_os::LOADER_SERIAL_BANNER;
 #[cfg(target_os = "uefi")]
 use rust_os::arch::x86_64::{halt, serial::SerialPort};
 #[cfg(target_os = "uefi")]
-use rust_os::boot::handoff::BootInfo;
+use rust_os::boot::handoff::{BootInfo, PhysicalRange};
 #[cfg(target_os = "uefi")]
 use rust_os::boot::multiboot::{EfiHandle, EfiStatus, SystemTable};
 
@@ -52,7 +56,7 @@ pub extern "efiapi" fn efi_main(
         }
     };
 
-    print_boot_info(&mut serial, image_handle, system_table, &boot_info);
+    print_boot_info(&mut serial, image_handle, system_table, boot_info);
     halt::halt_forever()
 }
 
@@ -61,7 +65,7 @@ fn print_boot_info(
     serial: &mut SerialPort,
     image_handle: EfiHandle,
     system_table: *mut SystemTable,
-    boot_info: &BootInfo,
+    boot_info: BootInfo,
 ) {
     serial.write_bytes(b"loader image start: ");
     write_hex_u64(serial, boot_info.loader_image.start);
@@ -96,7 +100,7 @@ fn print_boot_info(
     write_hex_usize(serial, count);
     serial.write_bytes(b"\r\n");
 
-    let layout = EarlyLayout::from_boot_info(boot_info);
+    let layout = EarlyLayout::from_boot_info(&boot_info);
 
     print_candidate(serial, b"early allocation region", layout.region);
     print_candidate(serial, b"kernel usable region", layout.kernel_usable_region);
@@ -123,7 +127,7 @@ fn print_boot_info(
     print_kernel_segments(serial, loaded_kernel);
 
     serial.write_bytes(b"building page tables...\r\n");
-    let page_tables = match paging::build(boot_info, layout, loaded_kernel) {
+    let page_tables = match paging::build(&boot_info, layout, loaded_kernel) {
         Ok(page_tables) => page_tables,
         Err(error) => {
             print_paging_error(serial, error);
@@ -132,6 +136,16 @@ fn print_boot_info(
         }
     };
     print_page_tables(serial, page_tables, loaded_kernel);
+
+    let prepared_handoff = match handoff::prepare(boot_info, layout, loaded_kernel, page_tables) {
+        Ok(prepared_handoff) => prepared_handoff,
+        Err(error) => {
+            print_handoff_error(serial, error);
+            serial.write_bytes(b"\r\n");
+            return;
+        }
+    };
+    print_handoff(serial, prepared_handoff);
 }
 
 #[cfg(target_os = "uefi")]
@@ -315,8 +329,121 @@ fn print_page_tables(
 }
 
 #[cfg(target_os = "uefi")]
+fn print_handoff(serial: &mut SerialPort, prepared_handoff: PreparedHandoff) {
+    serial.write_bytes(b"boot handoff at:     ");
+    write_hex_u64(serial, prepared_handoff.physical_address);
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"boot handoff contents:\r\n");
+
+    serial.write_bytes(b"  loader_image: ");
+    print_range(serial, prepared_handoff.boot_info.loader_image);
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  memory_map.map: ");
+    write_hex_u64(
+        serial,
+        prepared_handoff.boot_info.memory_map.map as usize as u64,
+    );
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  memory_map.map_size: ");
+    write_hex_usize(serial, prepared_handoff.boot_info.memory_map.map_size);
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  memory_map.map_key: ");
+    write_hex_usize(serial, prepared_handoff.boot_info.memory_map.map_key);
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  memory_map.descriptor_size: ");
+    write_hex_usize(
+        serial,
+        prepared_handoff.boot_info.memory_map.descriptor_size,
+    );
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  memory_map.descriptor_version: ");
+    write_hex_u32(
+        serial,
+        prepared_handoff.boot_info.memory_map.descriptor_version,
+    );
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  usable_range_count: ");
+    write_decimal_u64(serial, prepared_handoff.boot_info.usable_range_count as u64);
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  usable_ranges:\r\n");
+    for (index, range) in prepared_handoff.boot_info.usable_ranges
+        [..prepared_handoff.boot_info.usable_range_count]
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        serial.write_bytes(b"  [");
+        write_decimal_u64(serial, index as u64);
+        serial.write_bytes(b"] ");
+        print_range(serial, range);
+        serial.write_bytes(b"\r\n");
+    }
+
+    serial.write_bytes(b"  kernel_image.physical_range: ");
+    write_hex_u64(
+        serial,
+        prepared_handoff.boot_info.kernel_image.physical_range.start,
+    );
+    serial.write_bytes(b"..");
+    write_hex_u64(
+        serial,
+        prepared_handoff.boot_info.kernel_image.physical_range.end,
+    );
+    serial.write_bytes(b" -> ");
+    write_hex_u64(
+        serial,
+        prepared_handoff.boot_info.kernel_image.virtual_range.start,
+    );
+    serial.write_bytes(b"..");
+    write_hex_u64(
+        serial,
+        prepared_handoff.boot_info.kernel_image.virtual_range.end,
+    );
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  kernel_image.entry_point: ");
+    write_hex_u64(serial, prepared_handoff.boot_info.kernel_image.entry_point);
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  paging.pml4_physical_start: ");
+    write_hex_u64(
+        serial,
+        prepared_handoff.boot_info.paging.pml4_physical_start,
+    );
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  paging.kernel_stack_physical: ");
+    print_range(
+        serial,
+        prepared_handoff.boot_info.paging.kernel_stack_physical,
+    );
+    serial.write_bytes(b"\r\n");
+
+    serial.write_bytes(b"  paging.kernel_stack_virtual: ");
+    print_range(
+        serial,
+        prepared_handoff.boot_info.paging.kernel_stack_virtual,
+    );
+    serial.write_bytes(b"\r\n");
+}
+
+#[cfg(target_os = "uefi")]
 fn print_paging_error(serial: &mut SerialPort, error: BuildError) {
     serial.write_bytes(b"page-table build failed at ");
+    serial.write_bytes(error.stage);
+}
+
+#[cfg(target_os = "uefi")]
+fn print_handoff_error(serial: &mut SerialPort, error: HandoffError) {
+    serial.write_bytes(b"boot handoff failed at ");
     serial.write_bytes(error.stage);
 }
 
