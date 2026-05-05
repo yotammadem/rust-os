@@ -82,5 +82,6 @@ Run:
 - Build initial x86_64 page tables in the reserved page-table region.
 - Identity-map only the loader-side memory needed during the transition.
 - Map the loaded kernel ELF segments at their higher-half virtual addresses.
+- Reserve and map an initial higher-half kernel stack.
 - Extend the boot handoff with the minimal state the kernel needs.
-- Enable paging and jump to the kernel entry point.
+- Enable paging, switch to the kernel stack, and jump to the kernel entry point.
