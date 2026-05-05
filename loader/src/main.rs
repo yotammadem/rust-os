@@ -146,6 +146,17 @@ fn print_boot_info(
         }
     };
     print_handoff(serial, prepared_handoff);
+
+    serial.write_bytes(b"exiting boot services...\r\n");
+    let boot_info_mut =
+        unsafe { &mut *(prepared_handoff.physical_address as usize as *mut BootInfo) };
+    if let Err(status) = bootinfo::exit_boot_services(image_handle, system_table, boot_info_mut) {
+        serial.write_bytes(b"exit boot services failed: ");
+        write_hex_usize(serial, status);
+        serial.write_bytes(b"\r\n");
+        return;
+    }
+
     serial.write_bytes(b"switching to kernel...\r\n");
     unsafe { paging::enter_kernel(prepared_handoff) }
 }

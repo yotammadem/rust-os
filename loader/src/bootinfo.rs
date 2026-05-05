@@ -26,6 +26,26 @@ pub fn collect(
     ))
 }
 
+pub fn exit_boot_services(
+    image_handle: EfiHandle,
+    system_table: *mut SystemTable,
+    boot_info: &mut BootInfo,
+) -> Result<(), EfiStatus> {
+    let boot_services = boot_services(system_table)?;
+
+    loop {
+        let memory_map = memory_map(boot_services)?;
+        boot_info.memory_map = memory_map;
+
+        let status =
+            unsafe { (boot_services.exit_boot_services)(image_handle, memory_map.map_key) };
+
+        if status == EFI_SUCCESS {
+            return Ok(());
+        }
+    }
+}
+
 pub(crate) fn boot_services(
     system_table: *mut SystemTable,
 ) -> Result<&'static rust_os::boot::multiboot::BootServices, EfiStatus> {
@@ -56,7 +76,7 @@ pub(crate) fn loaded_image(
     Ok(unsafe { &*(interface as *const LoadedImageProtocol) })
 }
 
-fn memory_map(
+pub fn memory_map(
     boot_services: &rust_os::boot::multiboot::BootServices,
 ) -> Result<MemoryMapInfo, EfiStatus> {
     let mut map_size = 0usize;
