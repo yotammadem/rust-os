@@ -130,7 +130,7 @@ fn print_boot_info(
             return;
         }
     };
-    print_page_tables(serial, page_tables);
+    print_page_tables(serial, page_tables, loaded_kernel);
 }
 
 #[cfg(target_os = "uefi")]
@@ -261,7 +261,11 @@ fn print_segment(serial: &mut SerialPort, index: usize, segment: LoadedSegment) 
 }
 
 #[cfg(target_os = "uefi")]
-fn print_page_tables(serial: &mut SerialPort, page_tables: BuiltPageTables) {
+fn print_page_tables(
+    serial: &mut SerialPort,
+    page_tables: BuiltPageTables,
+    loaded_kernel: LoadedKernelImage,
+) {
     serial.write_bytes(b"page-table root:     ");
     write_hex_u64(serial, page_tables.pml4_physical_start);
     serial.write_bytes(b"\r\n");
@@ -272,6 +276,32 @@ fn print_page_tables(serial: &mut SerialPort, page_tables: BuiltPageTables) {
 
     print_candidate(serial, b"loader stack window", page_tables.stack_window);
     print_candidate(serial, b"memory-map window", page_tables.memory_map_window);
+
+    serial.write_bytes(b"kernel higher-half mappings:\r\n");
+    for (index, segment) in loaded_kernel.segments[..loaded_kernel.segment_count]
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        if segment.memory_size == 0 {
+            continue;
+        }
+
+        serial.write_bytes(b"  [");
+        write_decimal_u64(serial, index as u64);
+        serial.write_bytes(b"] ");
+        write_hex_u64(serial, segment.physical_start);
+        serial.write_bytes(b"..");
+        write_hex_u64(serial, segment.physical_end);
+        serial.write_bytes(b" -> ");
+        write_hex_u64(serial, segment.virtual_address);
+        serial.write_bytes(b"..");
+        write_hex_u64(
+            serial,
+            segment.virtual_address.saturating_add(segment.memory_size),
+        );
+        serial.write_bytes(b"\r\n");
+    }
 }
 
 #[cfg(target_os = "uefi")]
