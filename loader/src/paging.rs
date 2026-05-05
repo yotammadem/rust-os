@@ -7,6 +7,7 @@ use rust_os::boot::handoff::{BootInfo, PhysicalRange};
 const PAGE_SIZE: u64 = 4096;
 const STACK_WINDOW_BYTES: u64 = 16 * PAGE_SIZE;
 const KERNEL_STACK_TOP: u64 = 0xffff_ffff_8008_0000;
+const BOOT_INFO_VADDR: u64 = 0xffff_ffff_8009_0000;
 const ENTRY_COUNT: usize = 512;
 const ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
 const PRESENT: u64 = 1 << 0;
@@ -26,6 +27,7 @@ pub struct BuiltPageTables {
     pub memory_map_window: PhysicalRange,
     pub kernel_stack_physical: PhysicalRange,
     pub kernel_stack_virtual: PhysicalRange,
+    pub boot_info_virtual: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -37,7 +39,7 @@ pub unsafe fn enter_kernel(prepared_handoff: PreparedHandoff) -> ! {
     let pml4 = prepared_handoff.boot_info.paging.pml4_physical_start;
     let stack_top = prepared_handoff.boot_info.paging.kernel_stack_virtual.end;
     let entry_point = prepared_handoff.boot_info.kernel_image.entry_point;
-    let boot_info_ptr = prepared_handoff.physical_address as usize as *const BootInfo;
+    let boot_info_ptr = prepared_handoff.virtual_address as usize as *const BootInfo;
 
     unsafe {
         asm!(
@@ -84,6 +86,12 @@ pub fn build(
         layout.kernel_stack_region.size_bytes(),
         PRESENT | WRITABLE,
     )?;
+    builder.map_range(
+        BOOT_INFO_VADDR,
+        layout.boot_info_region.start,
+        layout.boot_info_region.size_bytes(),
+        PRESENT | WRITABLE,
+    )?;
 
     for segment in loaded_kernel.segments[..loaded_kernel.segment_count]
         .iter()
@@ -112,6 +120,7 @@ pub fn build(
         memory_map_window,
         kernel_stack_physical: layout.kernel_stack_region,
         kernel_stack_virtual,
+        boot_info_virtual: BOOT_INFO_VADDR,
     })
 }
 

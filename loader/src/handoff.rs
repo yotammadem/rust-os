@@ -10,6 +10,7 @@ const PAGE_SIZE: u64 = 4096;
 #[derive(Clone, Copy)]
 pub struct PreparedHandoff {
     pub physical_address: u64,
+    pub virtual_address: u64,
     pub boot_info: &'static BootInfo,
 }
 
@@ -71,6 +72,7 @@ pub fn prepare(
 
     Ok(PreparedHandoff {
         physical_address,
+        virtual_address: page_tables.boot_info_virtual,
         boot_info: unsafe { &*boot_info_ptr },
     })
 }
