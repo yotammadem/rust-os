@@ -146,6 +146,8 @@ fn print_boot_info(
         }
     };
     print_handoff(serial, prepared_handoff);
+    serial.write_bytes(b"switching to kernel...\r\n");
+    unsafe { paging::enter_kernel(prepared_handoff) }
 }
 
 #[cfg(target_os = "uefi")]

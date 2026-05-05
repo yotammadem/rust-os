@@ -1,3 +1,4 @@
+use crate::handoff::PreparedHandoff;
 use crate::kernel_image::LoadedKernelImage;
 use crate::memory::EarlyLayout;
 use core::arch::asm;
@@ -10,8 +11,6 @@ const ENTRY_COUNT: usize = 512;
 const ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
 const PRESENT: u64 = 1 << 0;
 const WRITABLE: u64 = 1 << 1;
-const NO_EXECUTE: u64 = 1 << 63;
-const ELF_FLAG_EXECUTABLE: u32 = 1 << 0;
 const ELF_FLAG_WRITABLE: u32 = 1 << 1;
 
 #[repr(C, align(4096))]
@@ -32,6 +31,29 @@ pub struct BuiltPageTables {
 #[derive(Clone, Copy)]
 pub struct BuildError {
     pub stage: &'static [u8],
+}
+
+pub unsafe fn enter_kernel(prepared_handoff: PreparedHandoff) -> ! {
+    let pml4 = prepared_handoff.boot_info.paging.pml4_physical_start;
+    let stack_top = prepared_handoff.boot_info.paging.kernel_stack_virtual.end;
+    let entry_point = prepared_handoff.boot_info.kernel_image.entry_point;
+    let boot_info_ptr = prepared_handoff.physical_address as usize as *const BootInfo;
+
+    unsafe {
+        asm!(
+            "cli",
+            "mov cr3, rax",
+            "mov rsp, rcx",
+            "xor rbp, rbp",
+            "push 0",
+            "jmp r8",
+            in("rax") pml4,
+            in("rcx") stack_top,
+            in("r8") entry_point,
+            in("rdi") boot_info_ptr,
+            options(noreturn)
+        );
+    }
 }
 
 pub fn build(
@@ -60,7 +82,7 @@ pub fn build(
         kernel_stack_virtual.start,
         layout.kernel_stack_region.start,
         layout.kernel_stack_region.size_bytes(),
-        PRESENT | WRITABLE | NO_EXECUTE,
+        PRESENT | WRITABLE,
     )?;
 
     for segment in loaded_kernel.segments[..loaded_kernel.segment_count]
@@ -75,10 +97,6 @@ pub fn build(
         if segment.flags & ELF_FLAG_WRITABLE != 0 {
             flags |= WRITABLE;
         }
-        if segment.flags & ELF_FLAG_EXECUTABLE == 0 {
-            flags |= NO_EXECUTE;
-        }
-
         builder.map_range(
             segment.virtual_address,
             segment.physical_start,
@@ -128,7 +146,12 @@ impl PageTableBuilder {
             return Ok(());
         }
 
-        self.map_range(range.start, range.start, range.size_bytes(), flags)
+        self.map_range(
+            range.start,
+            range.start,
+            range.size_bytes(),
+            flags | PRESENT,
+        )
     }
 
     fn map_range(
